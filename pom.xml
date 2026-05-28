@@ -35,6 +35,8 @@
         <module>v1_21_R9</module>
         <module>v1_21_R10</module>
         <module>v1_21_R11</module>
+        <module>v26_1_R1</module>
+        <module>v26_1_R2</module>
     </modules>
 
     <properties>

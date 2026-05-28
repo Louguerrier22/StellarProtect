@@ -1,4 +1,4 @@
-package io.github.insideranh.stellarprotect.nms.v1_21_R11;
+package io.github.insideranh.stellarprotect.nms.v26_1_R1;
 
 import io.github.insideranh.stellarprotect.blocks.DataBlock;
 import lombok.Getter;
@@ -6,20 +6,19 @@ import org.bukkit.Bukkit;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
-import org.bukkit.block.data.Levelled;
 
-public class DataBlock_v1_21_R11 implements DataBlock {
+public class DataBlock_v26_1_R1 implements DataBlock {
 
     @Getter
     private final String blockDataString;
     private BlockData blockData;
 
-    public DataBlock_v1_21_R11(String blockDataString) {
+    public DataBlock_v26_1_R1(String blockDataString) {
         this.blockData = Bukkit.createBlockData(blockDataString);
         this.blockDataString = blockDataString;
     }
 
-    public DataBlock_v1_21_R11(Block block) {
+    public DataBlock_v26_1_R1(Block block) {
         this.blockData = block.getBlockData();
 //        if (blockData instanceof Levelled) {
 //            Levelled levelled = (Levelled) blockData;
@@ -36,7 +35,7 @@ public class DataBlock_v1_21_R11 implements DataBlock {
         this.blockDataString = blockData.getAsString();
     }
 
-    public DataBlock_v1_21_R11(BlockState block) {
+    public DataBlock_v26_1_R1(BlockState block) {
         this.blockData = block.getBlockData();
 //        if (blockData instanceof Levelled) {
 //            Levelled levelled = (Levelled) blockData;
@@ -65,8 +64,8 @@ public class DataBlock_v1_21_R11 implements DataBlock {
 
     @Override
     public boolean equals(Object obj) {
-        if (obj instanceof DataBlock_v1_21_R11) {
-            return blockData.equals(((DataBlock_v1_21_R11) obj).blockData);
+        if (obj instanceof DataBlock_v26_1_R1) {
+            return blockData.equals(((DataBlock_v26_1_R1) obj).blockData);
         }
         return false;
     }

@@ -1,4 +1,5 @@
 messages:
+  noDebug: "&cDebug mode is not enabled."
   noPermission: "&cYou don't have permission to do this."
   reloaded: "&aPlugin reloaded correctly."
   onlyPlayer: "&cThis command can only be used by players."

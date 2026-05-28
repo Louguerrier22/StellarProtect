@@ -38,6 +38,8 @@ public enum MinecraftVersion {
     v1_21_R10("1.21.10-R0.1-SNAPSHOT"),
     v1_21_R11("1.21.11-R0.1-SNAPSHOT"),
     v1_21("1.21-R0.1-SNAPSHOT"),
+    v26_1_R1("26.1.1-R0.1-SNAPSHOT"),
+    v26_1_R2("26.1.2-R0.1-SNAPSHOT"),
     v1_22;
 
     private final Set<String> versions;

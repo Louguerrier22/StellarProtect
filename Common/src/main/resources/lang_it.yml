@@ -1,4 +1,5 @@
 ﻿messages:
+  noDebug: '&cLa modalità debug è disabilitata.'
   noPermission: '&cNon hai il permesso per farlo.'
   reloaded: '&aPlugin ricaricato correttamente.'
   onlyPlayer: '&cQuesto comando può essere usato solo dai giocatori.'

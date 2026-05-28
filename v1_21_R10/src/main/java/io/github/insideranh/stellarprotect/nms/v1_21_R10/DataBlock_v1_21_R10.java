@@ -21,7 +21,7 @@ public class DataBlock_v1_21_R10 implements DataBlock {
 
     public DataBlock_v1_21_R10(Block block) {
         this.blockData = block.getBlockData();
-        if (blockData instanceof Levelled) {
+        /*if (blockData instanceof Levelled) {
             Levelled levelled = (Levelled) blockData;
             try {
                 int currentLevel = levelled.getLevel();
@@ -32,13 +32,13 @@ public class DataBlock_v1_21_R10 implements DataBlock {
                 // Ignore exceptions related to level setting, like for cauldrons
             }
             this.blockData = levelled;
-        }
+        }*/
         this.blockDataString = blockData.getAsString();
     }
 
     public DataBlock_v1_21_R10(BlockState block) {
         this.blockData = block.getBlockData();
-        if (blockData instanceof Levelled) {
+        /*if (blockData instanceof Levelled) {
             Levelled levelled = (Levelled) blockData;
             try {
                 int currentLevel = levelled.getLevel();
@@ -49,7 +49,7 @@ public class DataBlock_v1_21_R10 implements DataBlock {
                 // Ignore exceptions related to level setting, like for cauldrons
             }
             this.blockData = levelled;
-        }
+        }*/
         this.blockDataString = blockData.getAsString();
     }
 
