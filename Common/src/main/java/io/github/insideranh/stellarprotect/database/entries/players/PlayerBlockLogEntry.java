@@ -21,16 +21,18 @@ import java.sql.ResultSet;
 public class PlayerBlockLogEntry extends LogEntry {
 
     private static final BlocksManager blocksManager = StellarProtect.getInstance().getBlocksManager();
-    private final int blockId;
-    private int oldBlockId;
+    private final Integer blockId;
+    private Integer oldBlockId;
     private String nexoBlockId;
     private byte extraType;
     private String extraData;
+    private String oldBlockData;
+    private String blockEntityNbt;
+    private String oldBlockEntityNbt;
 
     @SneakyThrows
     public PlayerBlockLogEntry(ResultSet resultSet, JsonObject jsonObject) {
         super(resultSet);
-
         this.blockId = getBlockId(jsonObject);
         this.oldBlockId = getOldBlockId(jsonObject);
         if (jsonObject.has("nbId")) {
@@ -42,6 +44,15 @@ public class PlayerBlockLogEntry extends LogEntry {
         if (jsonObject.has("xd")) {
             this.extraData = jsonObject.get("xd").getAsString();
         }
+        if (jsonObject.has("od")) {
+            this.oldBlockData = jsonObject.get("od").getAsString();
+        }
+        if (jsonObject.has("nbt")) {
+            this.blockEntityNbt = jsonObject.get("nbt").getAsString();
+        }
+        if (jsonObject.has("onbt")) {
+            this.oldBlockEntityNbt = jsonObject.get("onbt").getAsString();
+        }
     }
 
     public PlayerBlockLogEntry(long playerId, BlockState oldBlockState, BlockState newBlockState, ActionType actionType) {
@@ -50,13 +61,17 @@ public class PlayerBlockLogEntry extends LogEntry {
         this.oldBlockId = oldBlockTemplate.getId();
         BlockTemplate blockTemplate = blocksManager.getBlockTemplate(newBlockState);
         this.blockId = blockTemplate.getId();
+        setBlockId(this.blockId);
+        setOldBlockId(this.oldBlockId);
+        captureNbt(oldBlockState, newBlockState);
     }
 
     public PlayerBlockLogEntry(long playerId, BlockState blockState, ActionType actionType) {
         super(playerId, actionType.getId(), blockState.getLocation(), System.currentTimeMillis());
         BlockTemplate blockTemplate = blocksManager.getBlockTemplate(blockState);
         this.blockId = blockTemplate.getId();
-
+        setBlockId(this.blockId);
+        captureNbt(null, blockState);
         if (actionType.getId() != ActionType.BLOCK_PLACE.getId() && actionType.getId() != ActionType.BLOCK_BREAK.getId())
             return;
         if (blockState instanceof InventoryHolder) {
@@ -71,13 +86,15 @@ public class PlayerBlockLogEntry extends LogEntry {
         super(playerId, actionType.getId(), location, System.currentTimeMillis());
         BlockTemplate blockTemplate = blocksManager.getBlockTemplate(block);
         this.blockId = blockTemplate.getId();
+        setBlockId(this.blockId);
     }
 
     public PlayerBlockLogEntry(long playerId, Block block, ActionType actionType) {
         super(playerId, actionType.getId(), block.getLocation(), System.currentTimeMillis());
         BlockTemplate blockTemplate = blocksManager.getBlockTemplate(block);
         this.blockId = blockTemplate.getId();
-
+        setBlockId(this.blockId);
+        captureNbt(null, block.getState());
         if (actionType.getId() != ActionType.BLOCK_PLACE.getId() && actionType.getId() != ActionType.BLOCK_BREAK.getId())
             return;
         if (block.getState() instanceof InventoryHolder) {
@@ -92,24 +109,37 @@ public class PlayerBlockLogEntry extends LogEntry {
         super(playerId, actionType.getId(), block.getLocation(), System.currentTimeMillis());
         BlockTemplate blockTemplate = blocksManager.getBlockTemplate(block);
         this.blockId = blockTemplate.getId();
+        setBlockId(this.blockId);
         this.nexoBlockId = "nexo:" + nexoBlockId;
     }
 
-    public int getBlockId(JsonObject jsonObject) {
+    private void captureNbt(BlockState oldState, BlockState newState) {
+        try {
+            if (newState != null && newState.getBlock().getState() instanceof org.bukkit.block.TileState) {
+                org.bukkit.block.TileState ts = (org.bukkit.block.TileState) newState.getBlock().getState();
+                io.github.insideranh.stellarprotect.utils.NbtUtils.writeBlockEntity(ts, json -> this.blockEntityNbt = json);
+            }
+            if (oldState != null && oldState.getBlock().getState() instanceof org.bukkit.block.TileState) {
+                org.bukkit.block.TileState ts = (org.bukkit.block.TileState) oldState.getBlock().getState();
+                io.github.insideranh.stellarprotect.utils.NbtUtils.writeBlockEntity(ts, json -> this.oldBlockEntityNbt = json);
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    public Integer getBlockId(JsonObject jsonObject) {
         if (jsonObject.has("b")) return jsonObject.get("b").getAsInt();
         if (!jsonObject.has("d")) return -1;
-
-        String data = jsonObject.get("d").getAsString();
-        BlockTemplate blockTemplate = blocksManager.getBlockTemplate(data);
+        String d = jsonObject.get("d").getAsString();
+        BlockTemplate blockTemplate = blocksManager.getBlockTemplate(d);
         return blockTemplate.getId();
     }
 
-    public int getOldBlockId(JsonObject jsonObject) {
+    public Integer getOldBlockId(JsonObject jsonObject) {
         if (jsonObject.has("ob")) return jsonObject.get("ob").getAsInt();
         if (!jsonObject.has("od")) return -1;
-
-        String data = jsonObject.get("od").getAsString();
-        BlockTemplate blockTemplate = blocksManager.getBlockTemplate(data);
+        String d = jsonObject.get("od").getAsString();
+        BlockTemplate blockTemplate = blocksManager.getBlockTemplate(d);
         return blockTemplate.getId();
     }
 
@@ -118,8 +148,14 @@ public class PlayerBlockLogEntry extends LogEntry {
         if (nexoBlockId != null) {
             return nexoBlockId;
         }
-
         BlockTemplate blockTemplate = blocksManager.getBlockTemplate(blockId);
+        return blockTemplate.getDataBlock().getBlockDataString();
+    }
+
+    public String getOldDataString() {
+        if (oldBlockData != null) return oldBlockData;
+        if (oldBlockId == 0) return null;
+        BlockTemplate blockTemplate = blocksManager.getBlockTemplate(oldBlockId);
         return blockTemplate.getDataBlock().getBlockDataString();
     }
 
@@ -130,6 +166,9 @@ public class PlayerBlockLogEntry extends LogEntry {
         if (oldBlockId != 0) {
             jsonObject.addProperty("ob", oldBlockId);
         }
+        if (oldBlockData != null) {
+            jsonObject.addProperty("od", oldBlockData);
+        }
         if (nexoBlockId != null) {
             jsonObject.addProperty("nbId", nexoBlockId);
         }
@@ -138,6 +177,12 @@ public class PlayerBlockLogEntry extends LogEntry {
         }
         if (extraData != null) {
             jsonObject.addProperty("xd", extraData);
+        }
+        if (blockEntityNbt != null) {
+            jsonObject.addProperty("nbt", blockEntityNbt);
+        }
+        if (oldBlockEntityNbt != null) {
+            jsonObject.addProperty("onbt", oldBlockEntityNbt);
         }
         return jsonObject.toString();
     }

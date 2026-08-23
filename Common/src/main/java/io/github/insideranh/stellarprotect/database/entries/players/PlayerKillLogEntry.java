@@ -30,6 +30,7 @@ public class PlayerKillLogEntry extends LogEntry {
     public PlayerKillLogEntry(long playerId, Entity killed, ActionType actionType) {
         super(playerId, actionType.getId(), killed.getLocation(), System.currentTimeMillis());
         this.entityType = killed.getType().name();
+        setEntityType(this.entityType);
 
         this.entityData = new EntityData(StellarProtect.getInstance().getDataEntity(killed).getData());
     }

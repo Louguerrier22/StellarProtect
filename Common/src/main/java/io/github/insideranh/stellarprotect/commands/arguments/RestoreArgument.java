@@ -47,23 +47,7 @@ public class RestoreArgument extends StellarArgument {
         Map<String, List<String>> includesMap = ArgumentsParser.parseIncludeMaterials(arguments);
         Map<String, List<String>> excludesMap = ArgumentsParser.parseExcludeMaterials(arguments);
 
-        List<ActionType> actionTypes;
-        if (actionTypesArg.isEmpty()) {
-            actionTypes = new LinkedList<>(Arrays.asList(
-                ActionType.BLOCK_BREAK,
-                ActionType.BLOCK_PLACE,
-                ActionType.BUCKET_EMPTY,
-                ActionType.BUCKET_FILL,
-                ActionType.BLOCK_SPREAD,
-                ActionType.INVENTORY_TRANSACTION
-            ));
-
-            if (hashTagsArg.isEntities()) {
-                actionTypes.add(ActionType.KILL_ENTITY);
-            }
-        } else {
-            actionTypes = actionTypesArg;
-        }
+        List<ActionType> actionTypes = applyScope(actionTypesArg, hashTagsArg);
 
         ItemsCache itemsCache = StellarProtect.getInstance().getItemsManager().getItemCache();
         BlocksCache blocksCache = StellarProtect.getInstance().getBlocksManager().getBlocksCache();
@@ -81,11 +65,22 @@ public class RestoreArgument extends StellarArgument {
             databaseFilters.setExcludeBlockFilters(blocksCache.findIdsByTypeNameContains(excludesArg, BlocksCache.FieldType.LOWER_TYPE_NAME));
             databaseFilters.setIncludeMaterialFilters(itemsCache.findIdsContains(includesMap));
             databaseFilters.setExcludeMaterialFilters(itemsCache.findIdsContains(excludesMap));
+            databaseFilters.setMinAmount(ArgumentsParser.parseMinAmount(arguments));
+            databaseFilters.setMaxAmount(ArgumentsParser.parseMaxAmount(arguments));
+            databaseFilters.setIncludeEnchantFilters(ArgumentsParser.parseEnchantFilters(arguments));
+            databaseFilters.setIncludeLoreFilters(ArgumentsParser.parseLoreFilters(arguments));
+            databaseFilters.setIncludeDisplayFilters(ArgumentsParser.parseDisplayFilters(arguments));
+            databaseFilters.setToolFilter(ArgumentsParser.parseBiome(arguments));
+            databaseFilters.setBiomeFilter(ArgumentsParser.parseBiome(arguments));
+            int[] chunk = ArgumentsParser.parseChunk(arguments);
+            if (chunk != null) {
+                databaseFilters.setChunkX(chunk[0]);
+                databaseFilters.setChunkZ(chunk[1]);
+            }
 
             if (hashTagsArg.isSession()) {
                 RestoreSession session = new RestoreSession(player, databaseFilters, hashTagsArg.isVerbose(), hashTagsArg.isSilent());
                 playerProtect.setRestoreSession(session);
-
                 plugin.getRestoreSessionManager().showRestoreSession(session);
                 return;
             }
@@ -94,25 +89,63 @@ public class RestoreArgument extends StellarArgument {
         });
     }
 
+    private List<ActionType> applyScope(List<ActionType> actionTypesArg, HashTagsArg hashTagsArg) {
+        if (actionTypesArg.isEmpty()) {
+            Set<ActionType> defaults = new LinkedHashSet<>();
+            if (hashTagsArg.isRestoringOnlyContainers()) {
+                defaults.add(ActionType.INVENTORY_TRANSACTION);
+                defaults.add(ActionType.PLACE_ITEM);
+                defaults.add(ActionType.REMOVE_ITEM);
+            } else if (hashTagsArg.isRestoringOnlyItems()) {
+                defaults.add(ActionType.DROP_ITEM);
+                defaults.add(ActionType.PICKUP_ITEM);
+                defaults.add(ActionType.CRAFT);
+                defaults.add(ActionType.ENCHANT);
+                defaults.add(ActionType.CONSUME);
+                defaults.add(ActionType.SMITH);
+                defaults.add(ActionType.BREWING);
+                defaults.add(ActionType.DEATH);
+            } else if (hashTagsArg.isRestoringOnlyKills()) {
+                defaults.add(ActionType.KILL_ENTITY);
+            } else {
+                defaults.add(ActionType.BLOCK_BREAK);
+                defaults.add(ActionType.BLOCK_PLACE);
+                defaults.add(ActionType.BUCKET_EMPTY);
+                defaults.add(ActionType.BUCKET_FILL);
+                defaults.add(ActionType.BLOCK_SPREAD);
+                if (!hashTagsArg.isBlocks()) {
+                    defaults.add(ActionType.INVENTORY_TRANSACTION);
+                    defaults.add(ActionType.PLACE_ITEM);
+                    defaults.add(ActionType.REMOVE_ITEM);
+                }
+                if (hashTagsArg.isEntities()) {
+                    defaults.add(ActionType.KILL_ENTITY);
+                }
+            }
+            return new ArrayList<>(defaults);
+        }
+        return actionTypesArg;
+    }
+
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, String[] arguments) {
         if (arguments.length >= 1) {
             String currentArg = arguments[arguments.length - 1].toLowerCase();
 
             if (currentArg.startsWith("t:") || currentArg.startsWith("time:")) {
-                return Arrays.asList("t:1h", "t:1d", "t:1w", "t:1mo", "t:1y", "t:1h-2h", "t:1d-7d", "t:1mo-2mo");
+                return Arrays.asList("t:1h", "t:1d", "t:1w", "t:1mo", "t:1y", "t:1h-2h", "t:1d-7d", "t:1mo-2mo", "t:30m");
             }
 
             if (currentArg.startsWith("r:") || currentArg.startsWith("radius:")) {
-                return Arrays.asList("r:10", "r:20", "r:50", "r:#world", "r:10,10,10");
+                return Arrays.asList("r:10", "r:20", "r:50", "r:#world", "r:#here:30", "r:10,10,10", "r:#chunk:5,5");
             }
 
             if (currentArg.startsWith("a:") || currentArg.startsWith("action:")) {
-                return Arrays.asList("a:block_break", "a:block_place", "a:inventory_transaction", "a:kill_entity", "a:block_spread");
+                return Arrays.asList("a:block_break", "a:block_place", "a:inventory_transaction", "a:kill_entity", "a:block_spread", "a:item_drop", "a:item_pickup", "a:brew", "a:death");
             }
 
             if (currentArg.startsWith("u:") || currentArg.startsWith("users:")) {
-                return Arrays.asList("u:player1", "u:player1,player2", "u:=fire", "u:=natural");
+                return Arrays.asList("u:player1", "u:player1,player2", "u:=fire", "u:=explosion");
             }
 
             if (currentArg.startsWith("i:") || currentArg.startsWith("include:")) {
@@ -123,12 +156,44 @@ public class RestoreArgument extends StellarArgument {
                 return Arrays.asList("e:air", "e:stone", "e:dirt");
             }
 
-            return Stream.of("t:1h", "t:1d", "t:1w", "t:1mo", "r:10", "a:", "u:", "i:", "e:", "mi:", "me:", "#session", "#preview", "#verbose", "#silent", "#count", "#entities")
+            if (currentArg.startsWith("b:") || currentArg.startsWith("amount:")) {
+                return Arrays.asList("b:64", "b:1-64", "b:>=32");
+            }
+
+            if (currentArg.startsWith("ench:")) {
+                return Arrays.asList("ench:sharpness:5", "ench:efficiency", "ench:*");
+            }
+
+            if (currentArg.startsWith("biome:")) {
+                return Arrays.asList("biome:plains", "biome:desert", "biome:forest");
+            }
+
+            if (currentArg.startsWith("ch:") || currentArg.startsWith("chunk:")) {
+                return Arrays.asList("ch:-3,4", "ch:0,0");
+            }
+
+            if (currentArg.startsWith("tool:")) {
+                return Arrays.asList("tool:diamond_pickaxe", "tool:wooden_axe", "tool:*");
+            }
+
+            if (currentArg.startsWith("within:")) {
+                return Arrays.asList("within:30m", "within:1h", "within:today");
+            }
+
+            if (currentArg.startsWith("lore:")) {
+                return Arrays.asList("lore:!empty", "lore:regex:.*magic.*");
+            }
+
+            if (currentArg.startsWith("display:")) {
+                return Arrays.asList("display:regex:^Mythic");
+            }
+
+            return Stream.of("t:1h", "t:1d", "t:30m", "t:1mo", "t:1y", "r:10", "r:30", "r:#global", "r:#here:20", "a:", "u:", "i:", "e:", "b:", "ench:", "biome:", "ch:", "tool:", "within:", "lore:", "display:", "mi:", "me:", "sort:", "#session", "#preview", "#verbose", "#silent", "#count", "#entities", "#blocks", "#containers", "#items", "#kills", "#regex", "#chunk")
                 .filter(name -> name.contains(currentArg))
                 .collect(Collectors.toList());
         }
 
-        return Arrays.asList("t:1h", "t:1d", "t:1w", "t:1mo", "r:10", "a:", "u:", "i:", "e:", "#session", "#preview", "#verbose", "#silent", "#count", "#entities");
+        return Arrays.asList("t:1h", "t:1d", "t:30m", "r:10", "a:", "u:", "i:", "e:", "b:", "ench:", "#session", "#preview", "#verbose", "#silent", "#count", "#entities", "#blocks", "#containers", "#items");
     }
 
     public void executeRestore(Player player, boolean preview, boolean verbose, boolean silent, DatabaseFilters filters) {

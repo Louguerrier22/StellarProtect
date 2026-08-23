@@ -126,35 +126,33 @@ public class BlockListener implements Listener {
         processBlockBreak(block, player, -2L);
     }
 
-    /*@EventHandler(priority = EventPriority.MONITOR)
-    public void onBlockFade(BlockFadeEvent event) {
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onBlockFade(org.bukkit.event.block.BlockFadeEvent event) {
         if (event.isCancelled()) return;
 
         Block block = event.getBlock();
         Material material = block.getType();
-        if (ActionType.BLOCK_BREAK.shouldSkipLog(block.getWorld().getName(), material.name())) return;
+        if (ActionType.BLOCK_FADE.shouldSkipLog(block.getWorld().getName(), material.name())) return;
 
         long playerId;
-
         if (material == Material.ICE || material.name().contains("FROSTED_ICE")) {
             playerId = PlayerUtils.getPlayerOrEntityId("=ice_melt");
         } else if (material == Material.SNOW || material == Material.SNOW_BLOCK || material.name().contains("POWDER_SNOW")) {
             playerId = PlayerUtils.getPlayerOrEntityId("=snow_fall");
         } else if (material == Material.FIRE || material.name().contains("FIRE")) {
             playerId = PlayerUtils.getPlayerOrEntityId("=fire");
-        } else if (material.name().contains("CORAL")) {
-            playerId = PlayerUtils.getPlayerOrEntityId("=natural");
         } else {
             playerId = PlayerUtils.getPlayerOrEntityId("=natural");
         }
 
+        BlockState oldState = block.getState();
         BlockState newState = event.getNewState();
-        if (newState.getType() != Material.AIR) {
-            processBlockStatePlace(block.getLocation(), block.getState(), newState, playerId);
+        if (newState.getType() != Material.AIR && !oldState.getType().equals(newState.getType())) {
+            plugin.getEventLogicHandler().onBlockFade(oldState, newState);
         } else {
             processBlockBreak(block, null, playerId);
         }
-    }*/
+    }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onBlockIgnite(BlockIgniteEvent event) {

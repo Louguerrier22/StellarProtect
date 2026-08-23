@@ -381,6 +381,110 @@ public class ArgumentsParser {
         return parseFilterArguments(joined, EXCLUDE_PATTERN);
     }
 
+    public static Integer parseMinAmount(String[] arguments) {
+        String joined = String.join(" ", arguments).toLowerCase(java.util.Locale.ROOT);
+        for (String part : joined.split("\\s+")) {
+            if (part.startsWith("b:") || part.startsWith("amount:")) {
+                String val = part.replaceFirst("^(b:|amount:)", "");
+                if (val.contains("-")) {
+                    String[] split = val.split("-");
+                    try {
+                        return Integer.parseInt(split[0]);
+                    } catch (NumberFormatException ignored) {}
+                } else if (val.startsWith(">=")) {
+                    try {
+                        return Integer.parseInt(val.substring(2));
+                    } catch (NumberFormatException ignored) {}
+                } else if (val.startsWith(">")) {
+                    try {
+                        return Integer.parseInt(val.substring(1)) + 1;
+                    } catch (NumberFormatException ignored) {}
+                } else {
+                    try {
+                        return Integer.parseInt(val);
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        return null;
+    }
+
+    public static Integer parseMaxAmount(String[] arguments) {
+        String joined = String.join(" ", arguments).toLowerCase(java.util.Locale.ROOT);
+        for (String part : joined.split("\\s+")) {
+            if (part.startsWith("b:") || part.startsWith("amount:")) {
+                String val = part.replaceFirst("^(b:|amount:)", "");
+                if (val.contains("-")) {
+                    String[] split = val.split("-");
+                    try {
+                        return Integer.parseInt(split[1]);
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        return null;
+    }
+
+    public static List<String> parseEnchantFilters(String[] arguments) {
+        return parseSingleValue(arguments, "ench:");
+    }
+
+    public static List<String> parseToolFilters(String[] arguments) {
+        return parseSingleValue(arguments, "tool:");
+    }
+
+    public static String parseBiome(String[] arguments) {
+        return parseFirstValue(arguments, "biome:");
+    }
+
+    public static int[] parseChunk(String[] arguments) {
+        String joined = String.join(" ", arguments).toLowerCase(java.util.Locale.ROOT);
+        for (String part : joined.split("\\s+")) {
+            if (part.startsWith("ch:") || part.startsWith("chunk:")) {
+                String val = part.replaceFirst("^(ch:|chunk:)", "");
+                String[] split = val.split(",");
+                if (split.length == 2) {
+                    try {
+                        return new int[]{Integer.parseInt(split[0].trim()), Integer.parseInt(split[1].trim())};
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        return null;
+    }
+
+    public static List<String> parseLoreFilters(String[] arguments) {
+        return parseSingleValue(arguments, "lore:");
+    }
+
+    public static List<String> parseDisplayFilters(String[] arguments) {
+        return parseSingleValue(arguments, "display:");
+    }
+
+    private static List<String> parseSingleValue(String[] arguments, String prefix) {
+        String joined = String.join(" ", arguments).toLowerCase(java.util.Locale.ROOT);
+        List<String> result = new ArrayList<>();
+        for (String part : joined.split("\\s+")) {
+            if (part.startsWith(prefix)) {
+                String val = part.replaceFirst("^" + prefix, "");
+                for (String v : val.split(",")) {
+                    if (!v.isEmpty()) result.add(v);
+                }
+            }
+        }
+        return result;
+    }
+
+    private static String parseFirstValue(String[] arguments, String prefix) {
+        String joined = String.join(" ", arguments).toLowerCase(java.util.Locale.ROOT);
+        for (String part : joined.split("\\s+")) {
+            if (part.startsWith(prefix)) {
+                return part.replaceFirst("^" + prefix, "");
+            }
+        }
+        return null;
+    }
+
     private static Map<String, List<String>> parseFilterArguments(String joined, Pattern pattern) {
         Map<String, List<String>> filterMap = new HashMap<>();
         Matcher matcher = pattern.matcher(joined);

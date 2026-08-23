@@ -72,6 +72,18 @@ public class LookupArgument extends StellarArgument {
 
             databaseFilters.setActionTypesFilter(actionTypesArg.stream().map(ActionType::getId).collect(Collectors.toCollection(ArrayList::new)));
             databaseFilters.setUserFilters(usersArg);
+            databaseFilters.setMinAmount(ArgumentsParser.parseMinAmount(arguments));
+            databaseFilters.setMaxAmount(ArgumentsParser.parseMaxAmount(arguments));
+            databaseFilters.setIncludeEnchantFilters(ArgumentsParser.parseEnchantFilters(arguments));
+            databaseFilters.setIncludeLoreFilters(ArgumentsParser.parseLoreFilters(arguments));
+            databaseFilters.setIncludeDisplayFilters(ArgumentsParser.parseDisplayFilters(arguments));
+            databaseFilters.setToolFilter(ArgumentsParser.parseBiome(arguments));
+            databaseFilters.setBiomeFilter(ArgumentsParser.parseBiome(arguments));
+            int[] chunk = ArgumentsParser.parseChunk(arguments);
+            if (chunk != null) {
+                databaseFilters.setChunkX(chunk[0]);
+                databaseFilters.setChunkZ(chunk[1]);
+            }
 
             playerProtect.getPosibleLogs().clear();
             playerProtect.setInspectSession(null);

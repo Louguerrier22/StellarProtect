@@ -102,7 +102,19 @@ public class MySQLConnection implements DatabaseConnection {
                         "action_type INT," +
                         "restored TINYINT DEFAULT 0," +
                         "extra_json TEXT," +
-                        "created_at BIGINT" +
+                        "created_at BIGINT," +
+                        "block_id INT DEFAULT NULL," +
+                        "old_block_id INT DEFAULT NULL," +
+                        "item_id BIGINT DEFAULT NULL," +
+                        "amount INT DEFAULT 0," +
+                        "entity_type VARCHAR(48) DEFAULT NULL," +
+                        "chunk_key BIGINT DEFAULT NULL," +
+                        "INDEX idx_block_time (block_id, created_at)," +
+                        "INDEX idx_oldblock_time (old_block_id, created_at)," +
+                        "INDEX idx_item_time (item_id, created_at)," +
+                        "INDEX idx_action_time (action_type, created_at)," +
+                        "INDEX idx_entity_time (entity_type, created_at)," +
+                        "INDEX idx_chunk (world_id, chunk_key, created_at)" +
                         ")");
 
                     statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + idCounterTable + " (" +
@@ -122,6 +134,26 @@ public class MySQLConnection implements DatabaseConnection {
                     statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + blockTemplatesTable + " (" +
                         "id INT PRIMARY KEY," +
                         "block_data TEXT" +
+                        ")");
+
+                    String prefix = stellarProtect.getConfigManager().getTablesPrefix();
+                    statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + prefix + "inv_snapshots (" +
+                        "log_entry_id BIGINT NOT NULL," +
+                        "slot SMALLINT NOT NULL," +
+                        "item_id BIGINT DEFAULT NULL," +
+                        "amount INT DEFAULT 0," +
+                        "nbt TEXT," +
+                        "PRIMARY KEY (log_entry_id, slot)," +
+                        "INDEX idx_inv_item (item_id)" +
+                        ")");
+
+                    statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + prefix + "inv_txns (" +
+                        "log_entry_id BIGINT NOT NULL," +
+                        "item_id BIGINT NOT NULL," +
+                        "amount_delta INT NOT NULL," +
+                        "is_added BOOLEAN NOT NULL," +
+                        "PRIMARY KEY (log_entry_id, item_id, is_added)," +
+                        "INDEX idx_txn_item (item_id)" +
                         ")");
 
                     statement.execute("SET SESSION foreign_key_checks = 0");

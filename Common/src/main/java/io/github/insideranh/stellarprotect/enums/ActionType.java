@@ -43,10 +43,8 @@ public enum ActionType {
     DEATH(23),
 
     MOUNT(24),
-    RAID(25),
     HANGING(26),
     SMITH(27),
-    BREWING(28),
     REPAIR(29),
     SHOOT(30),
     TOTEM(31),
@@ -67,6 +65,22 @@ public enum ActionType {
     BLOCK_SPREAD(41),
     ARMOR_STAND_MANIPULATE(42),
     LEASH(43),
+
+    BLOCK_FADE(44),
+    BLOCK_BURN(45),
+    BLOCK_FORM(46),
+    BLOCK_DISPENSE(47),
+    BREWING(48),
+    RAID(84, false),
+    RAID_SPAWN(85, false),
+    RAID_FINISH(86, false),
+    INVENTORY_SNAPSHOT(87),
+    ITEM_RESTORE(88, false),
+    DECORATED_POT(89, false),
+    CHISELED_BOOKSHELF(90, false),
+    CRAFTER(91, false),
+    ARMOR_TRIM(92, false),
+    SCULK_SENSOR(93, false),
 
     SHOP_GUI(80),
 

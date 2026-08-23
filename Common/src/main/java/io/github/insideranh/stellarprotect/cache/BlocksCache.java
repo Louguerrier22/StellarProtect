@@ -16,19 +16,18 @@ public class BlocksCache {
     private final IndexEntry[] idIndex = new IndexEntry[CAPACITY];
     private final IndexEntry[] typeNameIndex = new IndexEntry[CAPACITY];
 
-    private final Map<String, IntOpenHashSet> typeNameTokens = new HashMap<>();
+    private final Map<String, IntSet> typeNameTokens = new HashMap<>();
 
     private final int[] validPositions = new int[CAPACITY];
     private int validCount = 0;
+    private int nextFreeHint = 0;
 
     private int size = 0;
 
     private static long hash(String str) {
         if (str == null) return 0;
-
         long hash = 0;
         final int len = str.length();
-
         int i = 0;
         for (; i < len - 3; i += 4) {
             hash = (hash << 5) - hash + str.charAt(i);
@@ -36,11 +35,9 @@ public class BlocksCache {
             hash = (hash << 5) - hash + str.charAt(i + 2);
             hash = (hash << 5) - hash + str.charAt(i + 3);
         }
-
         for (; i < len; i++) {
             hash = (hash << 5) - hash + str.charAt(i);
         }
-
         return hash;
     }
 
@@ -54,7 +51,7 @@ public class BlocksCache {
         return value;
     }
 
-    private void indexSubstrings(String text, Map<String, IntOpenHashSet> tokenMap, int position) {
+    private void indexSubstrings(String text, Map<String, IntSet> tokenMap, int position) {
         if (text == null || text.isEmpty()) return;
 
         String lowerText = text.toLowerCase();
@@ -62,22 +59,28 @@ public class BlocksCache {
         for (int len = 2; len <= Math.min(6, lowerText.length()); len++) {
             for (int i = 0; i <= lowerText.length() - len; i++) {
                 String substring = lowerText.substring(i, i + len);
-
-                tokenMap.computeIfAbsent(substring, k -> new IntOpenHashSet()).add(position);
+                tokenMap.computeIfAbsent(substring, k -> new IntSet()).add(position);
             }
         }
 
         String[] words = lowerText.split("\\s+");
         for (String word : words) {
             if (!word.isEmpty()) {
-                tokenMap.computeIfAbsent(word, k -> new IntOpenHashSet()).add(position);
+                tokenMap.computeIfAbsent(word, k -> new IntSet()).add(position);
             }
         }
     }
 
     private int findFreePosition() {
-        for (int i = 0; i < CAPACITY; i++) {
+        for (int i = nextFreeHint; i < CAPACITY; i++) {
             if (items[i] == null) {
+                nextFreeHint = i + 1;
+                return i;
+            }
+        }
+        for (int i = 0; i < nextFreeHint; i++) {
+            if (items[i] == null) {
+                nextFreeHint = i + 1;
                 return i;
             }
         }
@@ -167,7 +170,7 @@ public class BlocksCache {
         return null;
     }
 
-    private List<Long> findContains(String searchText, Map<String, IntOpenHashSet> tokenMap, FieldType fieldType) {
+    private List<Long> findContains(String searchText, Map<String, IntSet> tokenMap, FieldType fieldType) {
         if (searchText == null || searchText.isEmpty()) {
             return new ArrayList<>();
         }
@@ -175,7 +178,7 @@ public class BlocksCache {
         String lowerSearch = searchText.toLowerCase();
         List<Long> results = new ArrayList<>();
 
-        IntOpenHashSet candidatePositions = tokenMap.get(lowerSearch);
+        IntSet candidatePositions = tokenMap.get(lowerSearch);
         if (candidatePositions != null) {
             int[] positions = candidatePositions.toArray();
             for (int pos : positions) {
@@ -188,12 +191,12 @@ public class BlocksCache {
         }
 
         String bestMatch = null;
-        IntOpenHashSet bestPositions = null;
+        IntSet bestPositions = null;
 
         for (int len = Math.min(lowerSearch.length(), 6); len >= 2; len--) {
             for (int i = 0; i <= lowerSearch.length() - len; i++) {
                 String candidate = lowerSearch.substring(i, i + len);
-                IntOpenHashSet positions = tokenMap.get(candidate);
+                IntSet positions = tokenMap.get(candidate);
                 if (positions != null) {
                     bestMatch = candidate;
                     bestPositions = positions;
@@ -301,17 +304,30 @@ public class BlocksCache {
 
     public enum FieldType {TYPE_NAME, LOWER_TYPE_NAME}
 
-    private static class IntOpenHashSet {
+    private static class IndexEntry {
+
+        final long hash;
+        final int position;
+        IndexEntry next;
+
+        IndexEntry(long hash, int position) {
+            this.hash = hash;
+            this.position = position;
+        }
+
+    }
+
+    private static class IntSet {
 
         private int[] keys;
         private boolean[] allocated;
         private int size;
 
-        public IntOpenHashSet() {
+        public IntSet() {
             this(16);
         }
 
-        public IntOpenHashSet(int capacity) {
+        public IntSet(int capacity) {
             capacity = nextPowerOfTwo(capacity);
             keys = new int[capacity];
             allocated = new boolean[capacity];
@@ -371,19 +387,6 @@ public class BlocksCache {
                 }
             }
 
-        }
-
-    }
-
-    private static class IndexEntry {
-
-        final long hash;
-        final int position;
-        IndexEntry next;
-
-        IndexEntry(long hash, int position) {
-            this.hash = hash;
-            this.position = position;
         }
 
     }

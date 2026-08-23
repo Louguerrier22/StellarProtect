@@ -10,6 +10,8 @@ import io.github.insideranh.stellarprotect.enums.ActionType;
 import io.github.insideranh.stellarprotect.items.ItemTemplate;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.DoubleChest;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -29,12 +31,13 @@ public class ChestRollbackSessionManager {
         if (session == null || !session.isActive()) return;
 
         Block block = location.getBlock();
-        if (!(block.getState() instanceof InventoryHolder)) {
+        BlockState state = block.getState();
+        if (!(state instanceof InventoryHolder)) {
             plugin.getLangManager().sendMessage(player, "messages.inventoryRollback.invalidBlock");
             return;
         }
 
-        InventoryHolder holder = (InventoryHolder) block.getState();
+        InventoryHolder holder = (InventoryHolder) state;
         Inventory inventory = holder.getInventory();
 
         plugin.getProtectDatabase().getRestoreActions(
@@ -85,6 +88,12 @@ public class ChestRollbackSessionManager {
 
             applyInventoryRollback(inventory, inventoryState, session.isVerbose(), session.isSilent(), player);
 
+            if (holder instanceof DoubleChest) {
+                DoubleChest doubleChest = (DoubleChest) holder;
+                Inventory leftInv = doubleChest.getInventory();
+                applyInventoryRollback(leftInv, inventoryState, session.isVerbose(), session.isSilent(), player);
+            }
+
             if (!session.isSilent()) {
                 plugin.getLangManager().sendMessage(player, "messages.inventoryRollback.success");
             }
@@ -122,6 +131,7 @@ public class ChestRollbackSessionManager {
 
     private void applyInventoryRollback(Inventory inventory, Map<Long, Integer> deltaState, boolean verbose, boolean silent, Player player) {
         int itemsChanged = 0;
+        inventory.clear();
 
         for (Map.Entry<Long, Integer> entry : deltaState.entrySet()) {
             long itemId = entry.getKey();

@@ -15,9 +15,9 @@ import java.sql.ResultSet;
 @Getter
 public class PlayerPlaceRemoveItemLogEntry extends LogEntry {
 
-    private final int blockId;
-    private final long itemReferenceId;
-    private final int amount;
+    private final Integer blockId;
+    private final Long itemReferenceId;
+    private final Integer amount;
     private final byte placed;
 
     @SneakyThrows
@@ -39,7 +39,7 @@ public class PlayerPlaceRemoveItemLogEntry extends LogEntry {
         this.placed = (byte) (placed ? 0 : 1);
     }
 
-    public int getBlockId(JsonObject jsonObject) {
+    public Integer getBlockId(JsonObject jsonObject) {
         if (jsonObject.has("b")) return jsonObject.get("b").getAsInt();
         if (!jsonObject.has("d")) return -1;
 

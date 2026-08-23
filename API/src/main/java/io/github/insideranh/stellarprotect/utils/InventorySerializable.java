@@ -75,4 +75,39 @@ public class InventorySerializable {
         }
     }
 
+    @SneakyThrows
+    public static String itemStackArrayToBase64(ItemStack[] items) {
+        if (items == null || items.length == 0) return "";
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+             BukkitObjectOutputStream dataOutput = new BukkitObjectOutputStream(outputStream)) {
+            dataOutput.writeInt(items.length);
+            for (ItemStack item : items) {
+                dataOutput.writeObject(item);
+            }
+            return Base64Coder.encodeLines(outputStream.toByteArray());
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    @SneakyThrows
+    public static ItemStack[] itemStackArrayFromBase64(String data) {
+        if (data == null || data.trim().isEmpty()) return new ItemStack[0];
+        try (ByteArrayInputStream inputStream = new ByteArrayInputStream(Base64Coder.decodeLines(data));
+             BukkitObjectInputStream dataInput = new BukkitObjectInputStream(inputStream)) {
+            int len = dataInput.readInt();
+            ItemStack[] result = new ItemStack[len];
+            for (int i = 0; i < len; i++) {
+                try {
+                    result[i] = (ItemStack) dataInput.readObject();
+                } catch (Exception ignored) {
+                    result[i] = null;
+                }
+            }
+            return result;
+        } catch (Exception e) {
+            return new ItemStack[0];
+        }
+    }
+
 }

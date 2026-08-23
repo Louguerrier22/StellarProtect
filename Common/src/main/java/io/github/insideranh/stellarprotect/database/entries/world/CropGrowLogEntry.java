@@ -23,11 +23,13 @@ public class CropGrowLogEntry extends LogEntry {
     public CropGrowLogEntry(long playerId, Block block) {
         super(playerId, ActionType.CROP_GROW.getId(), block.getLocation(), System.currentTimeMillis());
         this.age = StellarProtect.getInstance().getProtectNMS().getAge(block);
+        setAmount(this.age);
     }
 
     public CropGrowLogEntry(Block block) {
         super(PlayerUtils.getEntityByDirectId("=natural"), ActionType.CROP_GROW.getId(), block.getLocation(), System.currentTimeMillis());
         this.age = StellarProtect.getInstance().getProtectNMS().getAge(block);
+        setAmount(this.age);
     }
 
     @Override

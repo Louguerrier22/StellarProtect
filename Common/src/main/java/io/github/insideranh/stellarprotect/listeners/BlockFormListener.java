@@ -47,7 +47,10 @@ public class BlockFormListener implements Listener {
                 }
 
                 if (playerId != -2L) {
-                    PlayerBlockStateLogEntry blockStateLogEntry = new PlayerBlockStateLogEntry(playerId, block.getState(), newState, ActionType.BLOCK_PLACE);
+                    BlockState oldState = block.getState();
+                    PlayerBlockStateLogEntry blockStateLogEntry = new PlayerBlockStateLogEntry(playerId, oldState, newState, ActionType.BLOCK_SPREAD);
+                    blockStateLogEntry.setBlockId(plugin.getBlocksManager().getBlockTemplate(newState).getId());
+                    blockStateLogEntry.setOldBlockId(plugin.getBlocksManager().getBlockTemplate(oldState).getId());
                     LoggerCache.addLog(blockStateLogEntry);
                 }
             }
@@ -145,7 +148,8 @@ public class BlockFormListener implements Listener {
                     return;
                 }
 
-                PlayerBlockLogEntry breakEntry = new PlayerBlockLogEntry(playerId, toBlock, ActionType.BLOCK_BREAK);
+                BlockState oldToState = toBlock.getState();
+                PlayerBlockStateLogEntry breakEntry = new PlayerBlockStateLogEntry(playerId, oldToState, fromBlock.getState(), ActionType.BLOCK_SPREAD);
                 LoggerCache.addLog(breakEntry);
 
                 BlockSourceCache.registerBlockSource(toBlock.getLocation(), playerId);

@@ -247,7 +247,8 @@ public class StellarProtect extends JavaPlugin {
             new JoinQuitListener(), new InspectListener(),
             new CraftListener(), new ChatListener(),
             new PickUpDropListener(), new PlayerLogListener(),
-            new EntityListener(), new InventoryRollbackListener()));
+            new EntityListener(), new InventoryRollbackListener(),
+            new AdditionalListeners(), new InventorySnapshotListener()));
     }
 
     public ProtectNMS getProtectNMS() {
@@ -278,80 +279,188 @@ public class StellarProtect extends JavaPlugin {
 
         localVersion = MinecraftVersion.get(version);
         if (localVersion == null) {
-            Bukkit.getLogger().warning("[StellarProtect] No found Minecraft version " + version + ". If you want to support this version, contact InsiderAnh.");
-            Bukkit.getPluginManager().disablePlugin(this);
-            return;
+            Bukkit.getLogger().warning("[StellarProtect] No specific implementation for version " + version + ". Will attempt closest known.");
+            localVersion = MinecraftVersion.v26_1;
         }
 
-        if (localVersion.equals(MinecraftVersion.v1_8)) {
+        String resolved = resolveClosestNms(localVersion);
+        if (!resolved.equals(localVersion.name())) {
+            getLogger().warning("Version " + version + " not test build, using " + resolved);
+        }
+
+        if (resolved.equals("v1_8_R3")) {
             this.completer = "v1_8_R3";
             this.protectNMS = new ProtectNMS_v1_8_R3();
             this.colorUtils = new ColorUtils_v1_8_R3();
-        } else if (localVersion.equals(MinecraftVersion.v1_9)) {
+        } else if (resolved.equals("v1_9_R4")) {
             this.completer = "v1_9_R4";
             this.protectNMS = new ProtectNMS_v1_9_R4();
             this.colorUtils = new ColorUtils_v1_9_R4();
-        } else if (localVersion.equals(MinecraftVersion.v1_12)) {
+        } else if (resolved.equals("v1_12_R2")) {
             this.completer = "v1_12_R2";
             this.protectNMS = new ProtectNMS_v1_12_R2();
             this.colorUtils = new ColorUtils_v1_12_R2();
-        } else if (localVersion.equals(MinecraftVersion.v1_13)) {
+        } else if (resolved.equals("v1_13_R2")) {
             this.completer = "v1_13_R2";
             this.protectNMS = new ProtectNMS_v1_13_R2();
             this.colorUtils = new ColorUtils_v1_13_R2();
-        } else if (localVersion.equals(MinecraftVersion.v1_16)) {
+        } else if (resolved.equals("v1_16_R5")) {
             this.completer = "v1_16_R5";
             this.protectNMS = new ProtectNMS_v1_16_R5();
             this.colorUtils = new ColorUtils_v1_16_R5();
-        } else if (localVersion.equals(MinecraftVersion.v1_17)) {
-            this.completer = "v1_17_R1";
-            this.protectNMS = new ProtectNMS_v1_17_R1();
-            this.colorUtils = new ColorUtils_v1_16_R5();
         } else {
-            this.completer = localVersion.name();
+            this.completer = resolved;
             this.protectNMS = new ProtectNMS_v1_17_R1();
             this.colorUtils = new ColorUtils_v1_16_R5();
         }
 
-        getLogger().info("Loaded " + completer + " version.");
+        getLogger().info("Loaded " + completer + " NMS.");
 
-        Listener listener = Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".listeners.BlockListener_" + completer).asSubclass(Listener.class).getConstructor(EventLogicHandler.class).newInstance(this.eventLogicHandler);
-        getServer().getPluginManager().registerEvents(listener, this);
+        try {
+            Listener listener = Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".listeners.BlockListener_" + completer).asSubclass(Listener.class).getConstructor(EventLogicHandler.class).newInstance(this.eventLogicHandler);
+            getServer().getPluginManager().registerEvents(listener, this);
+        } catch (ClassNotFoundException ex) {
+            getLogger().warning("BlockListener_" + completer + " not found; using no-op.");
+        }
+    }
+
+    private String resolveClosestNms(MinecraftVersion v) {
+        if (v.lessThanOrEqualTo(MinecraftVersion.v1_8)) return "v1_8_R3";
+        if (v.lessThanOrEqualTo(MinecraftVersion.v1_9)) return "v1_9_R4";
+        if (v.lessThanOrEqualTo(MinecraftVersion.v1_12)) return "v1_12_R2";
+        if (v.lessThanOrEqualTo(MinecraftVersion.v1_13)) return "v1_13_R2";
+        if (v.lessThanOrEqualTo(MinecraftVersion.v1_16)) return "v1_16_R5";
+        return "v26_1_R2";
     }
 
     @SneakyThrows
     public BlockRestore getBlockRestore(String data) {
-        return Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".BlockRestore_" + completer).asSubclass(BlockRestore.class).getConstructor(String.class).newInstance(data);
+        String[] fallbacks = {completer, "v26_1_R2", "v1_21_R11", "v1_17_R1"};
+        for (String fb : fallbacks) {
+            try {
+                return Class.forName("io.github.insideranh.stellarprotect.nms." + fb + ".BlockRestore_" + fb).asSubclass(BlockRestore.class).getConstructor(String.class).newInstance(data);
+            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            }
+        }
+        return io.github.insideranh.stellarprotect.restore.BlockRestore.fromData(data);
     }
 
     @SneakyThrows
     public BlockRestore getBlockRestore(String data, byte extraType, String extraData) {
-        return Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".BlockRestore_" + completer).asSubclass(BlockRestore.class).getConstructor(String.class, byte.class, String.class).newInstance(data, extraType, extraData);
+        String[] fallbacks = {completer, "v26_1_R2", "v1_21_R11", "v1_17_R1"};
+        for (String fb : fallbacks) {
+            try {
+                return Class.forName("io.github.insideranh.stellarprotect.nms." + fb + ".BlockRestore_" + fb).asSubclass(BlockRestore.class).getConstructor(String.class, byte.class, String.class).newInstance(data, extraType, extraData);
+            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            }
+        }
+        return io.github.insideranh.stellarprotect.restore.BlockRestore.fromData(data, extraType, extraData);
+    }
+
+    @SneakyThrows
+    public BlockRestore getBlockRestore(String data, byte extraType, String extraData, boolean isPlace, String oldData, String blockEntityNbt, String oldBlockEntityNbt) {
+        try {
+            Class<?> cls = Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".BlockRestore_" + completer);
+            for (java.lang.reflect.Constructor<?> c : cls.getConstructors()) {
+                Class<?>[] params = c.getParameterTypes();
+                if (params.length == 7) {
+                    return (io.github.insideranh.stellarprotect.restore.BlockRestore) c.newInstance(data, extraType, extraData, isPlace, oldData, blockEntityNbt, oldBlockEntityNbt);
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+        }
+        return io.github.insideranh.stellarprotect.restore.BlockRestore.fromData(data, extraType, extraData, isPlace, oldData, blockEntityNbt, oldBlockEntityNbt);
     }
 
     @SneakyThrows
     public DataBlock getDataBlock(Block block) {
-        return Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".DataBlock_" + completer).asSubclass(DataBlock.class).getConstructor(Block.class).newInstance(block);
+        String[] fallbacks = {completer, "v26_1_R2", "v1_21_R11", "v1_17_R1"};
+        for (String fb : fallbacks) {
+            try {
+                return Class.forName("io.github.insideranh.stellarprotect.nms." + fb + ".DataBlock_" + fb).asSubclass(DataBlock.class).getConstructor(Block.class).newInstance(block);
+            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            }
+        }
+        try {
+            return new io.github.insideranh.stellarprotect.blocks.DataBlock() {
+                final org.bukkit.block.data.BlockData bd = block.getBlockData();
+                final String s = bd.getAsString();
+                @Override public String getBlockDataString() { return s; }
+                @Override public String getTypeMaterial() { return block.getType().name(); }
+            };
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @SneakyThrows
     public DataBlock getDataBlock(BlockState blockState) {
-        return Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".DataBlock_" + completer).asSubclass(DataBlock.class).getConstructor(BlockState.class).newInstance(blockState);
+        String[] fallbacks = {completer, "v26_1_R2", "v1_21_R11", "v1_17_R1"};
+        for (String fb : fallbacks) {
+            try {
+                return Class.forName("io.github.insideranh.stellarprotect.nms." + fb + ".DataBlock_" + fb).asSubclass(DataBlock.class).getConstructor(BlockState.class).newInstance(blockState);
+            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            }
+        }
+        return getDataBlock(blockState.getBlock());
     }
 
     @SneakyThrows
     public DataBlock getDataBlock(String blockDataString) {
-        return Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".DataBlock_" + completer).asSubclass(DataBlock.class).getConstructor(String.class).newInstance(blockDataString);
+        String[] fallbacks = {completer, "v26_1_R2", "v1_21_R11", "v1_17_R1"};
+        for (String fb : fallbacks) {
+            try {
+                return Class.forName("io.github.insideranh.stellarprotect.nms." + fb + ".DataBlock_" + fb).asSubclass(DataBlock.class).getConstructor(String.class).newInstance(blockDataString);
+            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            }
+        }
+        final String s = blockDataString;
+        final String mat = blockDataString.contains(":") ? blockDataString.substring(0, blockDataString.indexOf("[")) : blockDataString;
+        return new io.github.insideranh.stellarprotect.blocks.DataBlock() {
+            @Override public String getBlockDataString() { return s; }
+            @Override public String getTypeMaterial() { return mat; }
+        };
     }
 
     @SneakyThrows
     public DataEntity getDataEntity(Entity entity) {
-        return Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".DataEntity_" + completer).asSubclass(DataEntity.class).getConstructor(Entity.class).newInstance(entity);
+        String[] fallbacks = {completer, "v26_1_R2", "v1_21_R11", "v1_17_R1"};
+        for (String fb : fallbacks) {
+            try {
+                return Class.forName("io.github.insideranh.stellarprotect.nms." + fb + ".DataEntity_" + fb).asSubclass(DataEntity.class).getConstructor(Entity.class).newInstance(entity);
+            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            }
+        }
+        return new io.github.insideranh.stellarprotect.entities.DataEntity() {
+            final java.util.HashMap<String, Object> data = new java.util.HashMap<>();
+            {
+                data.put("ENTITY_TYPE", entity.getType().name());
+                if (entity.getCustomName() != null) data.put("CUSTOM_NAME", entity.getCustomName());
+                data.put("CUSTOM_NAME_VISIBLE", entity.isCustomNameVisible());
+                data.put("GLOWING", entity.isGlowing());
+                data.put("GRAVITY", entity.hasGravity());
+                data.put("INVULNERABLE", entity.isInvulnerable());
+                data.put("SILENT", entity.isSilent());
+            }
+            @Override public java.util.HashMap<String, Object> getData() { return data; }
+            @Override public void applyToEntity(Entity e) { /* no-op fallback */ }
+        };
     }
 
     @SneakyThrows
     public DataEntity getDataEntity(HashMap<String, Object> map) {
-        return Class.forName("io.github.insideranh.stellarprotect.nms." + completer + ".DataEntity_" + completer).asSubclass(DataEntity.class).getConstructor(HashMap.class).newInstance(map);
+        String[] fallbacks = {completer, "v26_1_R2", "v1_21_R11", "v1_17_R1"};
+        for (String fb : fallbacks) {
+            try {
+                return Class.forName("io.github.insideranh.stellarprotect.nms." + fb + ".DataEntity_" + fb).asSubclass(DataEntity.class).getConstructor(HashMap.class).newInstance(map);
+            } catch (ClassNotFoundException | NoSuchMethodException ignored) {
+            }
+        }
+        final java.util.HashMap<String, Object> data = new java.util.HashMap<>(map);
+        return new io.github.insideranh.stellarprotect.entities.DataEntity() {
+            @Override public java.util.HashMap<String, Object> getData() { return data; }
+            @Override public void applyToEntity(Entity e) { /* no-op fallback */ }
+        };
     }
 
     @SneakyThrows

@@ -7,7 +7,6 @@ import io.github.insideranh.stellarprotect.database.entries.LogEntry;
 import io.github.insideranh.stellarprotect.database.entries.players.PlayerBlockLogEntry;
 import io.github.insideranh.stellarprotect.database.entries.players.PlayerBlockStateLogEntry;
 import io.github.insideranh.stellarprotect.database.entries.players.PlayerKillLogEntry;
-import io.github.insideranh.stellarprotect.entities.DataEntity;
 import io.github.insideranh.stellarprotect.enums.ActionType;
 import io.github.insideranh.stellarprotect.restore.BlockRestore;
 import io.github.insideranh.stellarprotect.utils.PlayerUtils;
@@ -40,18 +39,20 @@ public class RestoreManager {
 
                     if (verbose) {
                         String actionName = blockLogEntry.getActionType() == ActionType.BLOCK_PLACE.getId() ? "PLACE" : "BREAK";
-                        String materialName = blockLogEntry.getDataString().split(":")[0];
                         sender.sendMessage("§7[VERBOSE] §e" + actionName + " §7at §f" +
                             (int) location.getX() + ", " + (int) location.getY() + ", " + (int) location.getZ() +
-                            " §7in §f" + location.getWorld().getName() +
-                            " §7material: §f" + materialName +
+                            " §7in §f" + (location.getWorld() == null ? "?" : location.getWorld().getName()) +
+                            " §7material: §f" + blockLogEntry.getDataString() +
                             " §7by §f" + PlayerUtils.getNameOfEntity(blockLogEntry.getPlayerId()) +
                             " §7(ID: " + blockLogEntry.getPlayerId() + ") §7at §f" +
-                            new java.text.SimpleDateFormat("HH:mm:ss dd/MM/yyyy").format(new java.util.Date(blockLogEntry.getCreatedAt())));
+                            new SimpleDateFormat("HH:mm:ss dd/MM/yyyy").format(new Date(blockLogEntry.getCreatedAt())));
                     }
 
                     try {
-                        BlockRestore blockRestore = plugin.getBlockRestore(blockLogEntry.getDataString());
+                        BlockRestore blockRestore = plugin.getBlockRestore(blockLogEntry.getDataString(), blockLogEntry.getExtraType(), blockLogEntry.getExtraData(),
+                            blockLogEntry.getActionType() == ActionType.BLOCK_PLACE.getId() || blockLogEntry.getActionType() == ActionType.BUCKET_EMPTY.getId(),
+                            blockLogEntry.getOldDataString(), null, null);
+
                         if (blockLogEntry.getActionType() == ActionType.BLOCK_PLACE.getId() || blockLogEntry.getActionType() == ActionType.BUCKET_EMPTY.getId()) {
                             plugin.getStellarTaskHook(() -> blockRestore.previewRemove(sender, location)).runTask(location);
                         } else if (blockLogEntry.getActionType() == ActionType.BLOCK_BREAK.getId() || blockLogEntry.getActionType() == ActionType.BUCKET_FILL.getId()) {
@@ -67,11 +68,10 @@ public class RestoreManager {
                         BlockRestore blockRestore = plugin.getBlockRestore(blockStateLogEntry.lastDataString());
 
                         if (verbose) {
-                            String materialName = blockStateLogEntry.lastDataString().split(":")[0];
                             sender.sendMessage("§7[VERBOSE] §eSTATE_CHANGE §7at §f" +
                                 (int) location.getX() + ", " + (int) location.getY() + ", " + (int) location.getZ() +
-                                " §7in §f" + location.getWorld().getName() +
-                                " §7material: §f" + materialName +
+                                " §7in §f" + (location.getWorld() == null ? "?" : location.getWorld().getName()) +
+                                " §7material: §f" + blockStateLogEntry.lastDataString() +
                                 " §7by §f" + PlayerUtils.getNameOfEntity(logEntry.getPlayerId()) +
                                 " §7(ID: " + blockStateLogEntry.getPlayerId() + ") §7at §f" +
                                 new SimpleDateFormat("HH:mm:ss dd/MM/yyyy").format(new Date(blockStateLogEntry.getCreatedAt())));
@@ -131,18 +131,16 @@ public class RestoreManager {
                 String actionName = blockLogEntry.getActionType() == ActionType.BLOCK_PLACE.getId() ? "REMOVING" : "RESTORING";
                 sender.sendMessage("§7[VERBOSE] §c" + actionName + " §7block at §f" +
                     (int) location.getX() + ", " + (int) location.getY() + ", " + (int) location.getZ() +
-                    " §7in §f" + location.getWorld().getName() +
+                    " §7in §f" + (location.getWorld() == null ? "?" : location.getWorld().getName()) +
                     " §7(originally by §f" + PlayerUtils.getNameOfEntity(logEntry.getPlayerId()) +
                     " §7ID: " + blockLogEntry.getPlayerId() + "§7) §7data: §f" + blockLogEntry.getDataString());
             }
 
             try {
-                BlockRestore blockRestore = plugin.getBlockRestore(blockLogEntry.getDataString(), blockLogEntry.getExtraType(), blockLogEntry.getExtraData());
-                if (blockLogEntry.getActionType() == ActionType.BLOCK_PLACE.getId() || blockLogEntry.getActionType() == ActionType.BUCKET_EMPTY.getId()) {
-                    plugin.getStellarTaskHook(() -> blockRestore.remove(location)).runTask(location);
-                } else if (blockLogEntry.getActionType() == ActionType.BLOCK_BREAK.getId() || blockLogEntry.getActionType() == ActionType.BUCKET_FILL.getId()) {
-                    plugin.getStellarTaskHook(() -> blockRestore.reset(gson, location)).runTask(location);
-                }
+                boolean isPlace = blockLogEntry.getActionType() == ActionType.BLOCK_PLACE.getId() || blockLogEntry.getActionType() == ActionType.BUCKET_EMPTY.getId();
+                BlockRestore blockRestore = plugin.getBlockRestore(blockLogEntry.getDataString(), blockLogEntry.getExtraType(), blockLogEntry.getExtraData(),
+                    isPlace, blockLogEntry.getOldDataString(), null, null);
+                plugin.getStellarTaskHook(() -> blockRestore.reset(gson, location)).runTask(location);
             } catch (Exception e) {
                 sender.sendMessage("§c[ERROR] Failed to restore block at " + (int) location.getX() + ", " + (int) location.getY() + ", " + (int) location.getZ() + " " + blockLogEntry.getBlockId());
             }
@@ -155,7 +153,7 @@ public class RestoreManager {
                 if (verbose) {
                     sender.sendMessage("§7[VERBOSE] §cREVERTING §7state at §f" +
                         (int) location.getX() + ", " + (int) location.getY() + ", " + (int) location.getZ() +
-                        " §7in §f" + location.getWorld().getName() +
+                        " §7in §f" + (location.getWorld() == null ? "?" : location.getWorld().getName()) +
                         " §7(originally by §f" + PlayerUtils.getNameOfEntity(logEntry.getPlayerId()) +
                         " §7ID: " + blockStateLogEntry.getPlayerId() + "§7) §7data: §f" + blockStateLogEntry.lastDataString());
                 }
@@ -172,8 +170,7 @@ public class RestoreManager {
             Location location = playerKillLogEntry.asBukkitLocation();
 
             Entity entity = location.getWorld().spawnEntity(location, entityType);
-            DataEntity dataEntity = plugin.getDataEntity(playerKillLogEntry.getEntityData().getEntityData());
-
+            io.github.insideranh.stellarprotect.entities.DataEntity dataEntity = plugin.getDataEntity(playerKillLogEntry.getEntityData().getEntityData());
             dataEntity.applyToEntity(entity);
         }
     }

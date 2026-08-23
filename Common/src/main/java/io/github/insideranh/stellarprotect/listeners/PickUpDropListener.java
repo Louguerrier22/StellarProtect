@@ -12,7 +12,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.inventory.CraftItemEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerPickupItemEvent;
 import org.bukkit.inventory.ItemStack;
@@ -68,7 +67,7 @@ public class PickUpDropListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onPickUp(PlayerDropItemEvent event) {
+    public void onDrop(PlayerDropItemEvent event) {
         PlayerProtect playerProtect = PlayerProtect.getPlayer(event.getPlayer());
         if (playerProtect == null) return;
 
@@ -82,18 +81,7 @@ public class PickUpDropListener implements Listener {
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onCraft(CraftItemEvent event) {
-        Player player = (Player) event.getWhoClicked();
-        PlayerProtect playerProtect = PlayerProtect.getPlayer(player);
-        if (playerProtect == null) return;
-
-        ItemReference itemReference = plugin.getItemsManager().getItemReference(event.getInventory().getResult());
-
-        LoggerCache.addLog(new PlayerItemLogEntry(playerProtect.getPlayerId(), itemReference, plugin.getProtectNMS().getBlockLocation(player, event.getInventory()), ActionType.DROP_ITEM));
-    }
-
-    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
-    public void onPickUp(PlayerPickupItemEvent event) {
+    public void onPickup(PlayerPickupItemEvent event) {
         Player player = event.getPlayer();
         PlayerProtect playerProtect = PlayerProtect.getPlayer(player);
         if (playerProtect == null) return;

@@ -18,13 +18,12 @@ import java.sql.ResultSet;
 public class PlayerBlockStateLogEntry extends LogEntry {
 
     private static final BlocksManager blocksManager = StellarProtect.getInstance().getBlocksManager();
-    private final int lastBlockId;
-    private final int newBlockId;
+    private final Integer lastBlockId;
+    private final Integer newBlockId;
 
     @SneakyThrows
     public PlayerBlockStateLogEntry(ResultSet resultSet, JsonObject jsonObject) {
         super(resultSet);
-
         this.newBlockId = jsonObject.has("nb") ? jsonObject.get("nb").getAsInt() : -1;
         this.lastBlockId = jsonObject.has("lb") ? jsonObject.get("lb").getAsInt() : -1;
     }
@@ -35,6 +34,8 @@ public class PlayerBlockStateLogEntry extends LogEntry {
         BlockTemplate newTemplate = blocksManager.getBlockTemplate(newState);
         this.lastBlockId = lastTemplate.getId();
         this.newBlockId = newTemplate.getId();
+        setBlockId(this.newBlockId);
+        setOldBlockId(this.lastBlockId);
     }
 
     public PlayerBlockStateLogEntry(long playerId, Location location, Block block, Block newBlock, ActionType actionType) {
@@ -43,6 +44,8 @@ public class PlayerBlockStateLogEntry extends LogEntry {
         BlockTemplate newTemplate = blocksManager.getBlockTemplate(newBlock);
         this.lastBlockId = lastTemplate.getId();
         this.newBlockId = newTemplate.getId();
+        setBlockId(this.newBlockId);
+        setOldBlockId(this.lastBlockId);
     }
 
     public PlayerBlockStateLogEntry(long playerId, Location location, BlockState blockState, BlockState newState, ActionType actionType) {
@@ -51,6 +54,8 @@ public class PlayerBlockStateLogEntry extends LogEntry {
         BlockTemplate newTemplate = blocksManager.getBlockTemplate(newState);
         this.lastBlockId = lastTemplate.getId();
         this.newBlockId = newTemplate.getId();
+        setBlockId(this.newBlockId);
+        setOldBlockId(this.lastBlockId);
     }
 
     @Override

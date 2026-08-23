@@ -39,12 +39,20 @@ public class PlayerTransactionEntry extends LogEntry {
                 this.removed.put(Long.parseLong(base64Key), amount);
             }
         }
+        int totalDelta = 0;
+        for (int v : added.values()) totalDelta += v;
+        for (int v : removed.values()) totalDelta -= v;
+        setAmount(Math.abs(totalDelta));
     }
 
     public PlayerTransactionEntry(long playerId, Map<Long, Integer> added, Map<Long, Integer> removed, Location location, ActionType actionType) {
         super(playerId, actionType.getId(), location, System.currentTimeMillis());
         this.added = added;
         this.removed = removed;
+        int totalDelta = 0;
+        for (int v : added.values()) totalDelta += v;
+        for (int v : removed.values()) totalDelta -= v;
+        setAmount(Math.abs(totalDelta));
     }
 
     @Override

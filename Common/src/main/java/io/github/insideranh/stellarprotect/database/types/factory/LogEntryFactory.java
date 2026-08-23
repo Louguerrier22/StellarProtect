@@ -12,7 +12,9 @@ import io.github.insideranh.stellarprotect.database.entries.hooks.PlayerXKitEven
 import io.github.insideranh.stellarprotect.database.entries.players.*;
 import io.github.insideranh.stellarprotect.database.entries.players.chat.PlayerChatEntry;
 import io.github.insideranh.stellarprotect.database.entries.players.chat.PlayerCommandEntry;
+import io.github.insideranh.stellarprotect.database.entries.world.BrewingLogEntry;
 import io.github.insideranh.stellarprotect.database.entries.world.CropGrowLogEntry;
+import io.github.insideranh.stellarprotect.database.entries.world.RaidLogEntry;
 import lombok.Getter;
 
 import java.sql.ResultSet;
@@ -105,6 +107,12 @@ public class LogEntryFactory {
         BLOCK_SPREAD(41, PlayerBlockStateLogEntry.class),
         ARMOR_STAND_MANIPULATE(42, PlayerArmorStandManipulateEntry.class),
         PLAYER_LEASH(43, PlayerLeashEntry.class),
+        BLOCK_FADE(44, PlayerBlockStateLogEntry.class),
+        BLOCK_FORM(46, PlayerBlockStateLogEntry.class),
+        BLOCK_DISPENSE(47, PlayerBlockLogEntry.class),
+        BREWING(48, BrewingLogEntry.class),
+        INVENTORY_SNAPSHOT(87, PlayerInventorySnapshotEntry.class),
+        RAID(84, RaidLogEntry.class),
 
         PLAYER_SHOP_GUI(80, PlayerShopGUIEntry.class),
 

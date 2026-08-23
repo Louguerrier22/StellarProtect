@@ -18,12 +18,13 @@ public class ItemsCache {
     private final IndexEntry[] loreIndex = new IndexEntry[CAPACITY];
     private final IndexEntry[] typeNameIndex = new IndexEntry[CAPACITY];
 
-    private final Map<String, IntOpenHashSet> displayNameTokens = new HashMap<>();
-    private final Map<String, IntOpenHashSet> loreTokens = new HashMap<>();
-    private final Map<String, IntOpenHashSet> typeNameTokens = new HashMap<>();
+    private final Map<String, IntSet> displayNameTokens = new HashMap<>();
+    private final Map<String, IntSet> loreTokens = new HashMap<>();
+    private final Map<String, IntSet> typeNameTokens = new HashMap<>();
 
     private final int[] validPositions = new int[CAPACITY];
     private int validCount = 0;
+    private int nextFreeHint = 0;
 
     private int size = 0;
 
@@ -58,7 +59,7 @@ public class ItemsCache {
         return value;
     }
 
-    private void indexSubstrings(String text, Map<String, IntOpenHashSet> tokenMap, int position) {
+    private void indexSubstrings(String text, Map<String, IntSet> tokenMap, int position) {
         if (text == null || text.isEmpty()) return;
 
         String lowerText = text.toLowerCase();
@@ -67,21 +68,28 @@ public class ItemsCache {
             for (int i = 0; i <= lowerText.length() - len; i++) {
                 String substring = lowerText.substring(i, i + len);
 
-                tokenMap.computeIfAbsent(substring, k -> new IntOpenHashSet()).add(position);
+                tokenMap.computeIfAbsent(substring, k -> new IntSet()).add(position);
             }
         }
 
         String[] words = lowerText.split("\\s+");
         for (String word : words) {
             if (!word.isEmpty()) {
-                tokenMap.computeIfAbsent(word, k -> new IntOpenHashSet()).add(position);
+                tokenMap.computeIfAbsent(word, k -> new IntSet()).add(position);
             }
         }
     }
 
     private int findFreePosition() {
-        for (int i = 0; i < CAPACITY; i++) {
+        for (int i = nextFreeHint; i < CAPACITY; i++) {
             if (items[i] == null) {
+                nextFreeHint = i + 1;
+                return i;
+            }
+        }
+        for (int i = 0; i < nextFreeHint; i++) {
+            if (items[i] == null) {
+                nextFreeHint = i + 1;
                 return i;
             }
         }
@@ -173,7 +181,7 @@ public class ItemsCache {
         return null;
     }
 
-    private List<Long> findContains(String searchText, Map<String, IntOpenHashSet> tokenMap, FieldType fieldType) {
+    private List<Long> findContains(String searchText, Map<String, IntSet> tokenMap, FieldType fieldType) {
         if (searchText == null || searchText.isEmpty()) {
             return new ArrayList<>();
         }
@@ -181,7 +189,7 @@ public class ItemsCache {
         String lowerSearch = searchText.toLowerCase();
         List<Long> results = new ArrayList<>();
 
-        IntOpenHashSet candidatePositions = tokenMap.get(lowerSearch);
+        IntSet candidatePositions = tokenMap.get(lowerSearch);
         if (candidatePositions != null) {
             int[] positions = candidatePositions.toArray();
             for (int pos : positions) {
@@ -194,12 +202,12 @@ public class ItemsCache {
         }
 
         String bestMatch = null;
-        IntOpenHashSet bestPositions = null;
+        IntSet bestPositions = null;
 
         for (int len = Math.min(lowerSearch.length(), 6); len >= 2; len--) {
             for (int i = 0; i <= lowerSearch.length() - len; i++) {
                 String candidate = lowerSearch.substring(i, i + len);
-                IntOpenHashSet positions = tokenMap.get(candidate);
+                IntSet positions = tokenMap.get(candidate);
                 if (positions != null) {
                     bestMatch = candidate;
                     bestPositions = positions;
@@ -341,17 +349,17 @@ public class ItemsCache {
 
     public enum FieldType {DISPLAY_NAME, LORE, TYPE_NAME, LOWER_DISPLAY_NAME, LOWER_LORE, LOWER_TYPE_NAME}
 
-    private static class IntOpenHashSet {
+    private static class IntSet {
 
         private int[] keys;
         private boolean[] allocated;
         private int size;
 
-        public IntOpenHashSet() {
+        public IntSet() {
             this(16);
         }
 
-        public IntOpenHashSet(int capacity) {
+        public IntSet(int capacity) {
             capacity = nextPowerOfTwo(capacity);
             keys = new int[capacity];
             allocated = new boolean[capacity];

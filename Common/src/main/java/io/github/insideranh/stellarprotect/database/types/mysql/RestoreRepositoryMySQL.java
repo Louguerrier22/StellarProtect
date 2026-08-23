@@ -174,7 +174,9 @@ public class RestoreRepositoryMySQL implements RestoreRepository {
         )
             .addTimeFilter(databaseFilters.getTimeFilter())
             .addRadiusFilter(databaseFilters.getRadiusFilter())
-            .addUsersFilter(databaseFilters.getUserFilters());
+            .addUsersFilter(databaseFilters.getUserFilters())
+            .addAmountFilter(databaseFilters.getMinAmount(), databaseFilters.getMaxAmount())
+            .addChunkFilter(databaseFilters.getChunkX(), databaseFilters.getChunkZ());
 
         queryBuilder.addCombinedIncludeFilters(
             databaseFilters.getAllIncludeFilters(),
@@ -295,58 +297,25 @@ public class RestoreRepositoryMySQL implements RestoreRepository {
 
             if (allIncludeFilters != null && !allIncludeFilters.isEmpty()) {
                 for (Long wordId : allIncludeFilters) {
-                    List<String> worldConditions = new ArrayList<>();
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"id\":" + wordId + ",%");
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"ai\":{%\"" + wordId + "\":%");
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"ri\":{%\"" + wordId + "\":%");
-
-                    allIncludeConditions.add("(" + String.join(" OR ", worldConditions) + ")");
+                    allIncludeConditions.add("(ple.block_id = ? OR ple.item_id = ?)");
+                    parameters.add(wordId);
+                    parameters.add(wordId);
                 }
             }
 
             if (materialFilters != null && !materialFilters.isEmpty()) {
                 for (Long wordId : materialFilters) {
-                    List<String> worldConditions = new ArrayList<>();
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"id\":" + wordId + ",%");
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"ai\":{%\"" + wordId + "\":%");
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"ri\":{%\"" + wordId + "\":%");
-
-                    allIncludeConditions.add("(" + String.join(" OR ", worldConditions) + ")");
+                    allIncludeConditions.add("(ple.block_id = ? OR ple.item_id = ?)");
+                    parameters.add(wordId);
+                    parameters.add(wordId);
                 }
             }
 
             if (blockFilters != null && !blockFilters.isEmpty()) {
                 for (Long blockId : blockFilters) {
-                    List<String> blockConditions = new ArrayList<>();
-
-                    blockConditions.add("ple.extra_json = ?");
-                    parameters.add("{\"b\":" + blockId + "}");
-
-                    blockConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("{\"b\":" + blockId + ",\"ob\":%}");
-
-                    blockConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("{\"b\":%,\"ob\":" + blockId + "}");
-
-                    blockConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("{\"nb\":\"" + blockId + "\",\"lb\":\"%\"}");
-
-                    blockConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("{\"nb\":\"%\",\"lb\":\"" + blockId + "\"}");
-
-                    allIncludeConditions.add("(" + String.join(" OR ", blockConditions) + ")");
+                    allIncludeConditions.add("(ple.block_id = ? OR ple.old_block_id = ?)");
+                    parameters.add(blockId);
+                    parameters.add(blockId);
                 }
             }
 
@@ -362,58 +331,25 @@ public class RestoreRepositoryMySQL implements RestoreRepository {
 
             if (allExcludeFilters != null && !allExcludeFilters.isEmpty()) {
                 for (Long materialId : allExcludeFilters) {
-                    List<String> worldExcludeConditions = new ArrayList<>();
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"id\":" + materialId + ",%");
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"ai\":{%\"" + materialId + "\":%");
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"ri\":{%\"" + materialId + "\":%");
-
-                    allExcludeConditions.add("(" + String.join(" AND ", worldExcludeConditions) + ")");
+                    allExcludeConditions.add("(ple.block_id IS NULL OR ple.block_id != ?) AND (ple.item_id IS NULL OR ple.item_id != ?)");
+                    parameters.add(materialId);
+                    parameters.add(materialId);
                 }
             }
 
             if (materialFilters != null && !materialFilters.isEmpty()) {
                 for (Long materialId : materialFilters) {
-                    List<String> worldExcludeConditions = new ArrayList<>();
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"id\":" + materialId + ",%");
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"ai\":{%\"" + materialId + "\":%");
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"ri\":{%\"" + materialId + "\":%");
-
-                    allExcludeConditions.add("(" + String.join(" AND ", worldExcludeConditions) + ")");
+                    allExcludeConditions.add("(ple.block_id IS NULL OR ple.block_id != ?) AND (ple.item_id IS NULL OR ple.item_id != ?)");
+                    parameters.add(materialId);
+                    parameters.add(materialId);
                 }
             }
 
             if (blockFilters != null && !blockFilters.isEmpty()) {
                 for (Long blockId : blockFilters) {
-                    List<String> blockExcludeConditions = new ArrayList<>();
-
-                    blockExcludeConditions.add("ple.extra_json != ?");
-                    parameters.add("{\"b\":" + blockId + "}");
-
-                    blockExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("{\"b\":" + blockId + ",\"ob\":%}");
-
-                    blockExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("{\"b\":%,\"ob\":" + blockId + "}");
-
-                    blockExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("{\"nb\":\"" + blockId + "\",\"lb\":\"%\"}");
-
-                    blockExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("{\"nb\":\"%\",\"lb\":\"" + blockId + "\"}");
-
-                    allExcludeConditions.add("(" + String.join(" AND ", blockExcludeConditions) + ")");
+                    allExcludeConditions.add("(ple.block_id IS NULL OR ple.block_id != ?) AND (ple.old_block_id IS NULL OR ple.old_block_id != ?)");
+                    parameters.add(blockId);
+                    parameters.add(blockId);
                 }
             }
 
@@ -431,6 +367,27 @@ public class RestoreRepositoryMySQL implements RestoreRepository {
                     .collect(Collectors.joining(","));
                 whereConditions.add("ple.player_id IN (" + placeholders + ")");
                 parameters.addAll(usersArg.getUserIds());
+            }
+            return this;
+        }
+
+        public QueryBuilder addAmountFilter(Integer minAmount, Integer maxAmount) {
+            if (minAmount != null) {
+                whereConditions.add("ple.amount >= ?");
+                parameters.add(minAmount);
+            }
+            if (maxAmount != null) {
+                whereConditions.add("ple.amount <= ?");
+                parameters.add(maxAmount);
+            }
+            return this;
+        }
+
+        public QueryBuilder addChunkFilter(Integer chunkX, Integer chunkZ) {
+            if (chunkX != null && chunkZ != null) {
+                whereConditions.add("ple.chunk_key = ?");
+                long hi = ((long) chunkX & 0xFFFF) << 16 | (chunkZ & 0xFFFF);
+                parameters.add(hi);
             }
             return this;
         }

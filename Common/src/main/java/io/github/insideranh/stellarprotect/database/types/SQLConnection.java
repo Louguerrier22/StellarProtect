@@ -69,6 +69,12 @@ public class SQLConnection implements DatabaseConnection {
                     "restored TINYINT DEFAULT 0," +
                     "extra_json TEXT," +
                     "created_at BIGINT," +
+                    "block_id INT DEFAULT NULL," +
+                    "old_block_id INT DEFAULT NULL," +
+                    "item_id BIGINT DEFAULT NULL," +
+                    "amount INT DEFAULT 0," +
+                    "entity_type VARCHAR(48) DEFAULT NULL," +
+                    "chunk_key BIGINT DEFAULT NULL," +
                     "FOREIGN KEY (player_id) REFERENCES " + playersTable + "(id)," +
                     "FOREIGN KEY (world_id) REFERENCES " + worldsTable + "(id)" +
                     ")");
@@ -91,6 +97,25 @@ public class SQLConnection implements DatabaseConnection {
                 statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + blockTemplatesTable + " (" +
                     "id INT PRIMARY KEY," +
                     "block_data TEXT" +
+                    ")");
+
+                // New: inventory snapshots (whole-inventory dumps, restore)
+                statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + stellarProtect.getConfigManager().getTablesPrefix() + "inv_snapshots (" +
+                    "log_entry_id BIGINT NOT NULL," +
+                    "slot SMALLINT NOT NULL," +
+                    "item_id BIGINT DEFAULT NULL," +
+                    "amount INT DEFAULT 0," +
+                    "nbt TEXT DEFAULT NULL," +
+                    "PRIMARY KEY (log_entry_id, slot)" +
+                    ")");
+
+                // New: per-item diffs for chest transactions (for #item queries)
+                statement.executeUpdate("CREATE TABLE IF NOT EXISTS " + stellarProtect.getConfigManager().getTablesPrefix() + "inv_txns (" +
+                    "log_entry_id BIGINT NOT NULL," +
+                    "item_id BIGINT NOT NULL," +
+                    "amount_delta INT NOT NULL," +
+                    "is_added BOOLEAN NOT NULL," +
+                    "PRIMARY KEY (log_entry_id, item_id, is_added)" +
                     ")");
 
                 ResultSet resultSet = statement.executeQuery("SELECT COUNT(*) FROM " + logEntriesTable);
@@ -132,6 +157,7 @@ public class SQLConnection implements DatabaseConnection {
     public void createIndexes() {
         String logEntries = stellarProtect.getConfigManager().getTablesLogEntries();
         String players = stellarProtect.getConfigManager().getTablesPlayers();
+        String prefix = stellarProtect.getConfigManager().getTablesPrefix();
 
         try (Statement stmt = connection.createStatement()) {
             try {
@@ -199,6 +225,42 @@ public class SQLConnection implements DatabaseConnection {
                 stmt.execute("CREATE INDEX IF NOT EXISTS idx_players_id ON " + players + " (id)");
             } catch (SQLException ignored) {
             }
+
+            // Phase 1 indexes: dedicated columns
+            try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_block_time ON " + logEntries + " (block_id, created_at DESC)");
+            } catch (SQLException ignored) {
+            }
+            try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_oldblock_time ON " + logEntries + " (old_block_id, created_at DESC)");
+            } catch (SQLException ignored) {
+            }
+            try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_item_time ON " + logEntries + " (item_id, created_at DESC)");
+            } catch (SQLException ignored) {
+            }
+            try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_action_time ON " + logEntries + " (action_type, created_at DESC)");
+            } catch (SQLException ignored) {
+            }
+            try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_entity_time ON " + logEntries + " (entity_type, created_at DESC)");
+            } catch (SQLException ignored) {
+            }
+            try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_chunk ON " + logEntries + " (world_id, chunk_key, created_at DESC)");
+            } catch (SQLException ignored) {
+            }
+
+            // Phase 1 inventory indexes
+            try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_inv_item ON " + prefix + "inv_snapshots (item_id)");
+            } catch (SQLException ignored) {
+            }
+            try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_txn_item ON " + prefix + "inv_txns (item_id)");
+            } catch (SQLException ignored) {
+            }
         } catch (SQLException e) {
             stellarProtect.getLogger().warning("Failed to create indexes: " + e.getMessage());
         }
@@ -220,6 +282,7 @@ public class SQLConnection implements DatabaseConnection {
         String logEntries = stellarProtect.getConfigManager().getTablesLogEntries();
         String players = stellarProtect.getConfigManager().getTablesPlayers();
         String itemTemplates = stellarProtect.getConfigManager().getTablesItemTemplates();
+        String prefix = stellarProtect.getConfigManager().getTablesPrefix();
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("ALTER TABLE " + players + " ADD COLUMN realname VARCHAR(36);");
         } catch (SQLException ignored) {
@@ -230,6 +293,53 @@ public class SQLConnection implements DatabaseConnection {
         }
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("ALTER TABLE " + logEntries + " ADD COLUMN restored TINYINT DEFAULT 0;");
+        } catch (SQLException ignored) {
+        }
+        // Phase 1: indexed columns
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE " + logEntries + " ADD COLUMN block_id INT DEFAULT NULL;");
+        } catch (SQLException ignored) {
+        }
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE " + logEntries + " ADD COLUMN old_block_id INT DEFAULT NULL;");
+        } catch (SQLException ignored) {
+        }
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE " + logEntries + " ADD COLUMN item_id BIGINT DEFAULT NULL;");
+        } catch (SQLException ignored) {
+        }
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE " + logEntries + " ADD COLUMN amount INT DEFAULT 0;");
+        } catch (SQLException ignored) {
+        }
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE " + logEntries + " ADD COLUMN entity_type VARCHAR(48) DEFAULT NULL;");
+        } catch (SQLException ignored) {
+        }
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE " + logEntries + " ADD COLUMN chunk_key BIGINT DEFAULT NULL;");
+        } catch (SQLException ignored) {
+        }
+        // Phase 1: inventory snapshot/txn tables
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("CREATE TABLE IF NOT EXISTS " + prefix + "inv_snapshots (" +
+                "log_entry_id BIGINT NOT NULL," +
+                "slot SMALLINT NOT NULL," +
+                "item_id BIGINT DEFAULT NULL," +
+                "amount INT DEFAULT 0," +
+                "nbt TEXT DEFAULT NULL," +
+                "PRIMARY KEY (log_entry_id, slot)" +
+                ")");
+        } catch (SQLException ignored) {
+        }
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("CREATE TABLE IF NOT EXISTS " + prefix + "inv_txns (" +
+                "log_entry_id BIGINT NOT NULL," +
+                "item_id BIGINT NOT NULL," +
+                "amount_delta INT NOT NULL," +
+                "is_added BOOLEAN NOT NULL," +
+                "PRIMARY KEY (log_entry_id, item_id, is_added)" +
+                ")");
         } catch (SQLException ignored) {
         }
     }

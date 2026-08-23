@@ -16,8 +16,8 @@ import java.util.Objects;
 @Getter
 public class PlayerItemLogEntry extends LogEntry {
 
-    private final long itemReferenceId;
-    private final int amount;
+    private final Long itemReferenceId;
+    private final Integer amount;
 
     @SneakyThrows
     public PlayerItemLogEntry(ResultSet resultSet, JsonObject jsonObject) {
@@ -30,12 +30,16 @@ public class PlayerItemLogEntry extends LogEntry {
         super(playerId, actionType.getId(), location, System.currentTimeMillis());
         this.itemReferenceId = itemReference.getTemplateId();
         this.amount = itemReference.getAmount();
+        setItemId(this.itemReferenceId);
+        setAmount(this.amount);
     }
 
     public PlayerItemLogEntry(long playerId, ItemReference itemReference, Location location, ActionType actionType, long currentTime) {
         super(playerId, actionType.getId(), location, currentTime);
         this.itemReferenceId = itemReference.getTemplateId();
         this.amount = itemReference.getAmount();
+        setItemId(this.itemReferenceId);
+        setAmount(this.amount);
     }
 
     @Override
@@ -54,7 +58,7 @@ public class PlayerItemLogEntry extends LogEntry {
         if (o == null || getClass() != o.getClass()) return false;
         if (!super.equals(o)) return false;
         PlayerItemLogEntry that = (PlayerItemLogEntry) o;
-        return itemReferenceId == that.itemReferenceId && amount == that.amount;
+        return Objects.equals(itemReferenceId, that.itemReferenceId) && amount == that.amount;
     }
 
     @Override

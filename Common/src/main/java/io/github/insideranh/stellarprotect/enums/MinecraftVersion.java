@@ -38,6 +38,7 @@ public enum MinecraftVersion {
     v1_21_R10("1.21.10-R0.1-SNAPSHOT"),
     v1_21_R11("1.21.11-R0.1-SNAPSHOT"),
     v1_21("1.21-R0.1-SNAPSHOT"),
+    v26_1("26.1.1-R0.1-SNAPSHOT"),
     v26_1_R1("26.1.1-R0.1-SNAPSHOT"),
     v26_1_R2("26.1.2-R0.1-SNAPSHOT"),
     v1_22;
@@ -82,6 +83,14 @@ public enum MinecraftVersion {
 
     public boolean lessThanOrEqualTo(MinecraftVersion other) {
         return ordinal() <= other.ordinal();
+    }
+
+    public boolean lessThan(MinecraftVersion other) {
+        return ordinal() < other.ordinal();
+    }
+
+    public boolean greaterThan(MinecraftVersion other) {
+        return ordinal() > other.ordinal();
     }
 
 }

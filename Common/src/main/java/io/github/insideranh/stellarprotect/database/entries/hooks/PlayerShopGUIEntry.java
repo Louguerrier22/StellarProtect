@@ -14,8 +14,8 @@ import java.sql.ResultSet;
 @Getter
 public class PlayerShopGUIEntry extends LogEntry {
 
-    private final long itemId;
-    private final int amount;
+    private final Long itemId;
+    private final Integer amount;
     private final double price;
     private final byte shopAction;
 

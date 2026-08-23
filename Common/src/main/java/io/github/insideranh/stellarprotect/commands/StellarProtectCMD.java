@@ -44,6 +44,8 @@ public class StellarProtectCMD implements TabExecutor {
         arguments.put("us", new UndoSessionArgument());
         arguments.put("invrollback", new InventoryRollbackArgument());
         arguments.put("irs", new InventoryRollbackSessionArgument());
+        arguments.put("export", new ExportArgument());
+        arguments.put("stats", new StatsArgument());
 
         completes.put("lookup", new LookupCompleter());
     }
@@ -184,6 +186,18 @@ public class StellarProtectCMD implements TabExecutor {
                     return false;
                 }
                 arguments.get("irs").onCommand(sender, Arrays.copyOfRange(args, 1, args.length));
+                break;
+            case "export":
+                if (hasBlockedPermission(sender, "rollback")) {
+                    return false;
+                }
+                arguments.get("export").onCommand(sender, Arrays.copyOfRange(args, 1, args.length));
+                break;
+            case "stats":
+                if (hasBlockedPermission(sender, "lookup")) {
+                    return false;
+                }
+                arguments.get("stats").onCommand(sender, Arrays.copyOfRange(args, 1, args.length));
                 break;
             case "help":
             default:

@@ -28,6 +28,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -170,8 +171,8 @@ public class LoggerRepositorySQL implements LoggerRepository {
                 connection.setAutoCommit(false);
 
                 try (PreparedStatement playerStmt = connection.prepareStatement(
-                    "INSERT INTO " + stellarProtect.getConfigManager().getTablesLogEntries() + " (player_id, world_id, x, y, z, action_type, restored, extra_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                )) {
+                    "INSERT INTO " + stellarProtect.getConfigManager().getTablesLogEntries() + " (player_id, world_id, x, y, z, action_type, restored, extra_json, created_at, block_id, old_block_id, item_id, amount, entity_type, chunk_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                , Statement.RETURN_GENERATED_KEYS)) {
                     for (LogEntry playerLog : logEntries) {
                         String extraJson = playerLog.toSaveJson();
 
@@ -184,11 +185,34 @@ public class LoggerRepositorySQL implements LoggerRepository {
                         playerStmt.setByte(7, playerLog.getRestored());
                         playerStmt.setString(8, extraJson);
                         playerStmt.setLong(9, playerLog.getCreatedAt());
+                        if (playerLog.getBlockId() != null) playerStmt.setInt(10, playerLog.getBlockId()); else playerStmt.setNull(10, java.sql.Types.INTEGER);
+                        if (playerLog.getOldBlockId() != null) playerStmt.setInt(11, playerLog.getOldBlockId()); else playerStmt.setNull(11, java.sql.Types.INTEGER);
+                        if (playerLog.getItemId() != null) playerStmt.setLong(12, playerLog.getItemId()); else playerStmt.setNull(12, java.sql.Types.BIGINT);
+                        playerStmt.setInt(13, playerLog.getAmount());
+                        playerStmt.setString(14, playerLog.getEntityType());
+                        if (playerLog.getChunkKey() != null) playerStmt.setLong(15, playerLog.getChunkKey()); else playerStmt.setNull(15, java.sql.Types.BIGINT);
                         playerStmt.addBatch();
                     }
 
                     playerStmt.executeBatch();
+
+                    ResultSet generatedKeys = playerStmt.getGeneratedKeys();
+                    Map<PlayerTransactionEntry, Long> txnEntries = new HashMap<>();
+                    int idx = 0;
+                    while (generatedKeys.next()) {
+                        long logId = generatedKeys.getLong(1);
+                        if (idx < logEntries.size()) {
+                            LogEntry le = logEntries.get(idx);
+                            if (le instanceof PlayerTransactionEntry) {
+                                txnEntries.put((PlayerTransactionEntry) le, logId);
+                            }
+                        }
+                        idx++;
+                    }
+
                     connection.commit();
+
+                    saveInventoryTxns(txnEntries);
 
                 } catch (Exception e) {
                     connection.rollback();
@@ -203,6 +227,32 @@ public class LoggerRepositorySQL implements LoggerRepository {
 
             Debugger.debugSave("Saved " + logEntries.size() + " log entries in " + (System.currentTimeMillis() - start) + "ms");
         });
+    }
+
+    private void saveInventoryTxns(Map<PlayerTransactionEntry, Long> txnEntries) {
+        if (txnEntries.isEmpty()) return;
+        try (PreparedStatement stmt = connection.prepareStatement(
+            "INSERT INTO " + stellarProtect.getConfigManager().getTablesPrefix() + "inv_txns (log_entry_id, item_id, amount_delta, is_added) VALUES (?, ?, ?, ?)"
+        )) {
+            for (Map.Entry<PlayerTransactionEntry, Long> e : txnEntries.entrySet()) {
+                long logId = e.getValue();
+                for (Map.Entry<Long, Integer> a : e.getKey().getAdded().entrySet()) {
+                    stmt.setLong(1, logId);
+                    stmt.setLong(2, a.getKey());
+                    stmt.setInt(3, a.getValue());
+                    stmt.setBoolean(4, true);
+                    stmt.addBatch();
+                }
+                for (Map.Entry<Long, Integer> r : e.getKey().getRemoved().entrySet()) {
+                    stmt.setLong(1, logId);
+                    stmt.setLong(2, r.getKey());
+                    stmt.setInt(3, r.getValue());
+                    stmt.setBoolean(4, false);
+                    stmt.addBatch();
+                }
+            }
+            stmt.executeBatch();
+        } catch (SQLException ignored) {}
     }
 
     @Override
@@ -402,11 +452,11 @@ public class LoggerRepositorySQL implements LoggerRepository {
                     ));
 
                 dbGrouped.forEach((location, logs) ->
-                    groupedResults.merge(location, logs, (existing, newLogs) -> {
-                        existing.addAll(newLogs);
-                        return existing;
-                    })
-                );
+                                groupedResults.merge(location, logs, (existing, newLogs) -> {
+                                    existing.addAll(newLogs);
+                                    return existing;
+                                })
+                    );
 
                 return new CallbackLookup<>(groupedResults, dbLookup.getTotal());
             }
@@ -594,7 +644,9 @@ public class LoggerRepositorySQL implements LoggerRepository {
         )
             .addTimeFilter(databaseFilters.getTimeFilter())
             .addRadiusFilter(databaseFilters.getRadiusFilter())
-            .addUsersFilter(databaseFilters.getUserFilters());
+            .addUsersFilter(databaseFilters.getUserFilters())
+            .addAmountFilter(databaseFilters.getMinAmount(), databaseFilters.getMaxAmount())
+            .addChunkFilter(databaseFilters.getChunkX(), databaseFilters.getChunkZ());
 
         queryBuilder.addCombinedIncludeFilters(
             databaseFilters.getAllIncludeFilters(),
@@ -715,68 +767,33 @@ public class LoggerRepositorySQL implements LoggerRepository {
 
             if (allIncludeFilters != null && !allIncludeFilters.isEmpty()) {
                 for (Long wordId : allIncludeFilters) {
-                    List<String> worldConditions = new ArrayList<>();
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"id\":" + wordId + ",%");
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"ai\":{%\"" + wordId + "\":%");
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"ri\":{%\"" + wordId + "\":%");
-
-                    allIncludeConditions.add("(" + String.join(" OR ", worldConditions) + ")");
+                    allIncludeConditions.add("(ple.block_id = ? OR ple.item_id = ?)");
+                    parameters.add(wordId);
+                    parameters.add(wordId);
                 }
             }
 
             if (materialFilters != null && !materialFilters.isEmpty()) {
                 for (Long wordId : materialFilters) {
-                    List<String> worldConditions = new ArrayList<>();
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"id\":" + wordId + ",%");
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"ai\":{%\"" + wordId + "\":%");
-
-                    worldConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"ri\":{%\"" + wordId + "\":%");
-
-                    allIncludeConditions.add("(" + String.join(" OR ", worldConditions) + ")");
+                    allIncludeConditions.add("(ple.block_id = ? OR ple.item_id = ?)");
+                    parameters.add(wordId);
+                    parameters.add(wordId);
                 }
             }
 
             if (blockFilters != null && !blockFilters.isEmpty()) {
                 for (Long blockId : blockFilters) {
-                    List<String> blockConditions = new ArrayList<>();
-
-                    blockConditions.add("ple.extra_json = ?");
-                    parameters.add("{\"b\":" + blockId + "}");
-
-                    blockConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("{\"b\":" + blockId + ",\"ob\":%}");
-
-                    blockConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("{\"b\":%,\"ob\":" + blockId + "}");
-
-                    blockConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("{\"nb\":\"" + blockId + "\",\"lb\":\"%\"}");
-
-                    blockConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("{\"nb\":\"%\",\"lb\":\"" + blockId + "\"}");
-
-                    allIncludeConditions.add("(" + String.join(" OR ", blockConditions) + ")");
+                    allIncludeConditions.add("(ple.block_id = ? OR ple.old_block_id = ?)");
+                    parameters.add(blockId);
+                    parameters.add(blockId);
                 }
             }
 
             if (entityFilters != null && !entityFilters.isEmpty()) {
-                List<String> entityConditions = new ArrayList<>();
                 for (String entityType : entityFilters) {
-                    entityConditions.add("ple.extra_json LIKE ?");
-                    parameters.add("%\"et\":\"" + entityType.toUpperCase(Locale.ROOT) + "\"%");
+                    allIncludeConditions.add("ple.entity_type = ?");
+                    parameters.add(entityType.toUpperCase(java.util.Locale.ROOT));
                 }
-                allIncludeConditions.add("(" + String.join(" OR ", entityConditions) + ")");
             }
 
             if (!allIncludeConditions.isEmpty()) {
@@ -791,65 +808,35 @@ public class LoggerRepositorySQL implements LoggerRepository {
 
             if (allExcludeFilters != null && !allExcludeFilters.isEmpty()) {
                 for (Long materialId : allExcludeFilters) {
-                    List<String> worldExcludeConditions = new ArrayList<>();
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"id\":" + materialId + ",%");
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"ai\":{%\"" + materialId + "\":%");
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"ri\":{%\"" + materialId + "\":%");
-
-                    allExcludeConditions.add("(" + String.join(" AND ", worldExcludeConditions) + ")");
+                    allExcludeConditions.add("ple.block_id != ?");
+                    allExcludeConditions.add("ple.item_id != ?");
+                    parameters.add(materialId);
+                    parameters.add(materialId);
                 }
             }
 
             if (materialFilters != null && !materialFilters.isEmpty()) {
                 for (Long materialId : materialFilters) {
-                    List<String> worldExcludeConditions = new ArrayList<>();
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"id\":" + materialId + ",%");
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"ai\":{%\"" + materialId + "\":%");
-
-                    worldExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"ri\":{%\"" + materialId + "\":%");
-
-                    allExcludeConditions.add("(" + String.join(" AND ", worldExcludeConditions) + ")");
+                    allExcludeConditions.add("ple.block_id != ?");
+                    allExcludeConditions.add("ple.item_id != ?");
+                    parameters.add(materialId);
+                    parameters.add(materialId);
                 }
             }
 
             if (blockFilters != null && !blockFilters.isEmpty()) {
                 for (Long blockId : blockFilters) {
-                    List<String> blockExcludeConditions = new ArrayList<>();
-
-                    blockExcludeConditions.add("ple.extra_json != ?");
-                    parameters.add("{\"b\":" + blockId + "}");
-
-                    blockExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("{\"b\":" + blockId + ",\"ob\":%}");
-
-                    blockExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("{\"b\":%,\"ob\":" + blockId + "}");
-
-                    blockExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("{\"nb\":\"" + blockId + "\",\"lb\":\"%\"}");
-
-                    blockExcludeConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("{\"nb\":\"%\",\"lb\":\"" + blockId + "\"}");
-
-                    allExcludeConditions.add("(" + String.join(" AND ", blockExcludeConditions) + ")");
+                    allExcludeConditions.add("ple.block_id != ?");
+                    allExcludeConditions.add("ple.old_block_id != ?");
+                    parameters.add(blockId);
+                    parameters.add(blockId);
                 }
             }
 
             if (entityFilters != null && !entityFilters.isEmpty()) {
                 for (String entityType : entityFilters) {
-                    whereConditions.add("ple.extra_json NOT LIKE ?");
-                    parameters.add("%\"et\":\"" + entityType.toUpperCase(Locale.ROOT) + "\"%");
+                    allExcludeConditions.add("ple.entity_type != ?");
+                    parameters.add(entityType.toUpperCase(java.util.Locale.ROOT));
                 }
             }
 
@@ -867,6 +854,27 @@ public class LoggerRepositorySQL implements LoggerRepository {
                     .collect(Collectors.joining(","));
                 whereConditions.add("ple.player_id IN (" + placeholders + ")");
                 parameters.addAll(usersArg.getUserIds());
+            }
+            return this;
+        }
+
+        public QueryBuilder addAmountFilter(Integer minAmount, Integer maxAmount) {
+            if (minAmount != null) {
+                whereConditions.add("ple.amount >= ?");
+                parameters.add(minAmount);
+            }
+            if (maxAmount != null) {
+                whereConditions.add("ple.amount <= ?");
+                parameters.add(maxAmount);
+            }
+            return this;
+        }
+
+        public QueryBuilder addChunkFilter(Integer chunkX, Integer chunkZ) {
+            if (chunkX != null && chunkZ != null) {
+                whereConditions.add("ple.chunk_key = ?");
+                long hi = ((long) chunkX & 0xFFFF) << 16 | (chunkZ & 0xFFFF);
+                parameters.add(hi);
             }
             return this;
         }
