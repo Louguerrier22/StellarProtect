@@ -114,7 +114,6 @@ public class MySQLConnection implements DatabaseConnection {
                         "INDEX idx_item_time (item_id, created_at)," +
                         "INDEX idx_action_time (action_type, created_at)," +
                         "INDEX idx_entity_time (entity_type, created_at)," +
-                        "INDEX idx_block_location_time (world_id, x, y, z, created_at, id)," +
                         "INDEX idx_chunk (world_id, chunk_key, created_at)" +
                         ")");
 
@@ -207,20 +206,7 @@ public class MySQLConnection implements DatabaseConnection {
             stellarProtect.getLogger().warning("Failed to create indexes: " + e.getMessage());
         }
 
-        createLocationLookupIndex(logEntries);
         updateTables();
-    }
-
-    private void createLocationLookupIndex(String logEntries) {
-        try (Connection connection = dataSource.getConnection();
-             Statement statement = connection.createStatement()) {
-            statement.execute("CREATE INDEX idx_block_location_time ON " + logEntries +
-                " (world_id, x, y, z, created_at, id)");
-        } catch (SQLException exception) {
-            if (exception.getErrorCode() != 1061) {
-                stellarProtect.getLogger().warning("Failed to create block location index: " + exception.getMessage());
-            }
-        }
     }
 
     @Override

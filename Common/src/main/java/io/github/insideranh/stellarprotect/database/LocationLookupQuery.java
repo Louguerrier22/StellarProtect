@@ -8,6 +8,7 @@ public final class LocationLookupQuery {
 
     private final String sql;
     private final int worldId;
+    private final long chunkKey;
     private final long startTime;
     private final long endTime;
     private final int blockX;
@@ -17,10 +18,11 @@ public final class LocationLookupQuery {
     private final int limit;
     private final int skip;
 
-    private LocationLookupQuery(String sql, int worldId, int blockX, int blockY, int blockZ,
+    private LocationLookupQuery(String sql, int worldId, long chunkKey, int blockX, int blockY, int blockZ,
                                 long startTime, long endTime, Integer actionTypeId, int limit, int skip) {
         this.sql = sql;
         this.worldId = worldId;
+        this.chunkKey = chunkKey;
         this.blockX = blockX;
         this.blockY = blockY;
         this.blockZ = blockZ;
@@ -48,6 +50,7 @@ public final class LocationLookupQuery {
                 "FROM " + logEntriesTable + " ple " +
                 "LEFT JOIN " + playersTable + " p ON ple.player_id = p.id " +
                 "WHERE ple.world_id = ? " +
+                "AND (ple.chunk_key = ? OR ple.chunk_key IS NULL) " +
                 "AND ple.created_at BETWEEN ? AND ? " +
                 "AND ple.x BETWEEN ? AND ? " +
                 "AND ple.y BETWEEN ? AND ? " +
@@ -55,15 +58,33 @@ public final class LocationLookupQuery {
                 "ORDER BY ple.created_at DESC, ple.id DESC " +
                 "LIMIT ? OFFSET ?";
 
-        return new LocationLookupQuery(sql, worldId, blockX, blockY, blockZ,
+        return new LocationLookupQuery(sql, worldId, chunkKeyOf(worldId, blockX, blockZ), blockX, blockY, blockZ,
             startTime, endTime, actionTypeId, limit, skip);
+    }
+
+    static long chunkKeyOf(int worldId, int blockX, int blockZ) {
+        int chunkX = blockX >> 4;
+        int chunkZ = blockZ >> 4;
+        long high = worldId & 0xFFFFFFFFL;
+        long low = ((long) (chunkX & 0xFFFF) << 16) | (chunkZ & 0xFFFF);
+        return (high << 32) | (low & 0xFFFFFFFFL);
     }
 
     public PreparedStatement prepare(Connection connection) throws SQLException {
         PreparedStatement statement = connection.prepareStatement(sql);
+        bind(statement);
+        return statement;
+    }
+
+    String sql() {
+        return sql;
+    }
+
+    void bind(PreparedStatement statement) throws SQLException {
         int parameter = 1;
 
         statement.setInt(parameter++, worldId);
+        statement.setLong(parameter++, chunkKey);
         statement.setLong(parameter++, startTime);
         statement.setLong(parameter++, endTime);
         statement.setDouble(parameter++, blockX - 0.5);
@@ -79,6 +100,5 @@ public final class LocationLookupQuery {
 
         statement.setInt(parameter++, limit);
         statement.setInt(parameter, skip);
-        return statement;
     }
 }

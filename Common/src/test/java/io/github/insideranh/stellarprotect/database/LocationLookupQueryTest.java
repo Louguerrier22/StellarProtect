@@ -12,6 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LocationLookupQueryTest {
 
@@ -49,6 +50,52 @@ class LocationLookupQueryTest {
         }
     }
 
+    @Test
+    void usesChunkIndexKeyWithoutHidingLegacyNullRows() throws Exception {
+        try (Connection connection = openDatabase()) {
+            insertLog(connection, 1, 1, 10.0, 64.0, 10.0, 1, 100L);
+            insertLegacyLog(connection, 2, 1, 10.0, 64.0, 10.0, 1, 200L);
+            insertLogWithChunkKey(connection, 3, 1, 10.0, 64.0, 10.0, 1, 300L,
+                LocationLookupQuery.chunkKeyOf(1, 32, 32));
+
+            LocationLookupQuery query = LocationLookupQuery.create(
+                "logs", "players", 1, 10, 64, 10,
+                0L, 1_000L, null, 10, 0
+            );
+
+            assertEquals(Arrays.asList(2L, 1L), executeIds(connection, query));
+        }
+    }
+
+    @Test
+    void sqliteCanUseTheExistingChunkIndexForCurrentAndLegacyRows() throws Exception {
+        try (Connection connection = openDatabase()) {
+            LocationLookupQuery query = LocationLookupQuery.create(
+                "logs", "players", 1, 10, 64, 10,
+                0L, 1_000L, null, 10, 0
+            );
+
+            List<String> plan = new ArrayList<>();
+            try (PreparedStatement statement = connection.prepareStatement("EXPLAIN QUERY PLAN " + query.sql())) {
+                query.bind(statement);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    while (resultSet.next()) {
+                        plan.add(resultSet.getString("detail"));
+                    }
+                }
+            }
+
+            assertTrue(plan.stream().anyMatch(line -> line.contains("idx_chunk")), plan.toString());
+        }
+    }
+
+    @Test
+    void derivesChunkKeysWithFlooringForNegativeBlockCoordinates() {
+        long expected = (7L << 32) | (0xFFFFL << 16) | 0xFFFEL;
+
+        assertEquals(expected, LocationLookupQuery.chunkKeyOf(7, -1, -17));
+    }
+
     private Connection openDatabase() throws Exception {
         Connection connection = DriverManager.getConnection("jdbc:sqlite::memory:");
         try (Statement statement = connection.createStatement()) {
@@ -56,16 +103,28 @@ class LocationLookupQueryTest {
             statement.execute("INSERT INTO players (id, name, uuid) VALUES (1, 'tester', 'uuid')");
             statement.execute("CREATE TABLE logs (" +
                 "id INTEGER PRIMARY KEY, player_id INTEGER, world_id INTEGER, " +
-                "x REAL, y REAL, z REAL, action_type INTEGER, created_at INTEGER)");
+                "x REAL, y REAL, z REAL, action_type INTEGER, created_at INTEGER, chunk_key INTEGER)");
+            statement.execute("CREATE INDEX idx_chunk ON logs (world_id, chunk_key, created_at DESC)");
         }
         return connection;
     }
 
     private void insertLog(Connection connection, long id, int worldId, double x, double y, double z,
                            int actionType, long createdAt) throws Exception {
+        insertLogWithChunkKey(connection, id, worldId, x, y, z, actionType, createdAt,
+            LocationLookupQuery.chunkKeyOf(worldId, (int) Math.floor(x), (int) Math.floor(z)));
+    }
+
+    private void insertLegacyLog(Connection connection, long id, int worldId, double x, double y, double z,
+                                 int actionType, long createdAt) throws Exception {
+        insertLogWithChunkKey(connection, id, worldId, x, y, z, actionType, createdAt, null);
+    }
+
+    private void insertLogWithChunkKey(Connection connection, long id, int worldId, double x, double y, double z,
+                                       int actionType, long createdAt, Long chunkKey) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement(
-            "INSERT INTO logs (id, player_id, world_id, x, y, z, action_type, created_at) " +
-                "VALUES (?, 1, ?, ?, ?, ?, ?, ?)")) {
+            "INSERT INTO logs (id, player_id, world_id, x, y, z, action_type, created_at, chunk_key) " +
+                "VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)")) {
             statement.setLong(1, id);
             statement.setInt(2, worldId);
             statement.setDouble(3, x);
@@ -73,6 +132,11 @@ class LocationLookupQueryTest {
             statement.setDouble(5, z);
             statement.setInt(6, actionType);
             statement.setLong(7, createdAt);
+            if (chunkKey == null) {
+                statement.setObject(8, null);
+            } else {
+                statement.setLong(8, chunkKey);
+            }
             statement.executeUpdate();
         }
     }
