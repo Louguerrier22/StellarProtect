@@ -12,6 +12,8 @@ import io.github.insideranh.stellarprotect.cache.LoggerCache;
 import io.github.insideranh.stellarprotect.cache.PlayerCache;
 import io.github.insideranh.stellarprotect.cache.keys.LocationCache;
 import io.github.insideranh.stellarprotect.callback.CallbackLookup;
+import io.github.insideranh.stellarprotect.database.LocationLookupPage;
+import io.github.insideranh.stellarprotect.database.LocationLookupQuery;
 import io.github.insideranh.stellarprotect.database.entries.LogEntry;
 import io.github.insideranh.stellarprotect.database.entries.items.ItemLogEntry;
 import io.github.insideranh.stellarprotect.database.entries.players.PlayerTransactionEntry;
@@ -475,20 +477,18 @@ public class LoggerRepositoryMySQL implements LoggerRepository {
     @Override
     public CompletableFuture<CallbackLookup<Set<LogEntry>, Long>> getLogs(@NonNull Location location, int skip, int limit) {
         return CompletableFuture.supplyAsync(() -> {
-            List<LogEntry> cachedLogs = LoggerCache.getLogs(LocationCache.of(location), skip, limit)
+            int candidateLimit = LocationLookupPage.databaseFetchLimit(limit, 0);
+            List<LogEntry> cachedLogs = LoggerCache.getLogs(LocationCache.of(location), skip, candidateLimit)
                 .stream()
                 .filter(log -> System.currentTimeMillis() - log.getCreatedAt() <= TimeUnit.MINUTES.toMillis(15))
                 .sorted(Comparator.comparingLong(LogEntry::getCreatedAt).reversed())
                 .collect(Collectors.toList());
 
-            Set<LogEntry> result = new LinkedHashSet<>(cachedLogs);
-
-            long totalCount = countLogsFromDB(location, null);
-
-            int remaining = limit - cachedLogs.size();
+            List<LogEntry> candidates = new ArrayList<>(cachedLogs);
+            int remaining = LocationLookupPage.databaseFetchLimit(limit, cachedLogs.size());
 
             if (remaining > 0) {
-                int dbSkip = skip + cachedLogs.size();
+                int dbSkip = LocationLookupPage.databaseSkip(skip, cachedLogs.size());
 
                 CallbackLookup<Set<LogEntry>, Long> dbLookup = queryLogsFromDB(location, dbSkip, remaining, null);
 
@@ -498,101 +498,35 @@ public class LoggerRepositoryMySQL implements LoggerRepository {
                     .limit(remaining)
                     .collect(Collectors.toList());
 
-                result.addAll(dbLogs);
+                candidates.addAll(dbLogs);
             }
 
-            Debugger.debugLog("getLogs: cached=" + cachedLogs.size() + ", total=" + totalCount + ", result=" + result.size());
+            candidates.sort(Comparator.comparingLong(LogEntry::getCreatedAt).reversed());
+            LocationLookupPage<LogEntry> page = LocationLookupPage.fromCandidates(candidates, skip, limit);
+            Set<LogEntry> result = new LinkedHashSet<>(page.getRows());
 
-            return new CallbackLookup<>(result, totalCount);
+            Debugger.debugLog("getLogs: cached=" + cachedLogs.size() + ", estimatedTotal=" +
+                page.getEstimatedTotal() + ", hasMore=" + page.hasMore() + ", result=" + result.size());
+
+            return new CallbackLookup<>(result, page.getEstimatedTotal());
         }, stellarProtect.getLookupExecutor());
-    }
-
-    private long countLogsFromDB(Location location, @Nullable ActionType actionType) {
-        String actionTypeFilter = actionType != null ? "AND ple.action_type = ? " : "";
-
-        String countQuery =
-            "SELECT COUNT(*) FROM " + stellarProtect.getConfigManager().getTablesLogEntries() + " ple " +
-                "WHERE ple.created_at BETWEEN ? AND ? " +
-                "AND ple.x BETWEEN ? AND ? " +
-                "AND ple.y BETWEEN ? AND ? " +
-                "AND ple.z BETWEEN ? AND ? " + actionTypeFilter;
-
-        long startTime = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30);
-        long endTime = System.currentTimeMillis();
-
-        int blockX = location.getBlockX();
-        int blockY = location.getBlockY();
-        int blockZ = location.getBlockZ();
-
-        try (Connection connection = getConnection();
-             PreparedStatement countStmt = connection.prepareStatement(countQuery)) {
-            countStmt.setLong(1, startTime);
-            countStmt.setLong(2, endTime);
-            countStmt.setDouble(3, blockX - 0.5);
-            countStmt.setDouble(4, blockX + 0.5);
-            countStmt.setDouble(5, blockY - 0.5);
-            countStmt.setDouble(6, blockY + 0.5);
-            countStmt.setDouble(7, blockZ - 0.5);
-            countStmt.setDouble(8, blockZ + 0.5);
-
-            if (actionType != null) {
-                countStmt.setInt(9, actionType.getId());
-            }
-
-            try (ResultSet resultSet = countStmt.executeQuery()) {
-                if (resultSet.next()) {
-                    return resultSet.getLong(1);
-                }
-            }
-        } catch (SQLException e) {
-            stellarProtect.getLogger().log(Level.SEVERE, "Error in countLogsFromDB", e);
-        }
-
-        return 0;
     }
 
     private CallbackLookup<Set<LogEntry>, Long> queryLogsFromDB(Location location, int skip, int limit, @Nullable ActionType actionType) {
         Set<LogEntry> logs = new LinkedHashSet<>();
 
-        String actionTypeFilter = actionType != null ? "AND ple.action_type = ? " : "";
-
-        String dataQuery =
-            "SELECT ple.*, p.name, p.uuid " +
-                "FROM " + stellarProtect.getConfigManager().getTablesLogEntries() + " ple " +
-                "LEFT JOIN " + stellarProtect.getConfigManager().getTablesPlayers() + " p ON ple.player_id = p.id " +
-                "WHERE ple.created_at BETWEEN ? AND ? " +
-                "AND ple.x BETWEEN ? AND ? " +
-                "AND ple.y BETWEEN ? AND ? " +
-                "AND ple.z BETWEEN ? AND ? " + actionTypeFilter +
-                "ORDER BY ple.created_at DESC " +
-                "LIMIT ? OFFSET ?";
-
         long startTime = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(30);
         long endTime = System.currentTimeMillis();
-
-        int blockX = location.getBlockX();
-        int blockY = location.getBlockY();
-        int blockZ = location.getBlockZ();
+        LocationCache locationCache = LocationCache.of(location);
+        LocationLookupQuery query = LocationLookupQuery.create(
+            stellarProtect.getConfigManager().getTablesLogEntries(),
+            stellarProtect.getConfigManager().getTablesPlayers(),
+            locationCache.getWorldId(), locationCache.getX(), locationCache.getY(), locationCache.getZ(),
+            startTime, endTime, actionType != null ? actionType.getId() : null, limit, skip
+        );
 
         try (Connection connection = getConnection();
-             PreparedStatement dataStmt = connection.prepareStatement(dataQuery)) {
-            dataStmt.setLong(1, startTime);
-            dataStmt.setLong(2, endTime);
-            dataStmt.setDouble(3, blockX - 0.5);
-            dataStmt.setDouble(4, blockX + 1.5);
-            dataStmt.setDouble(5, blockY - 0.5);
-            dataStmt.setDouble(6, blockY + 1.5);
-            dataStmt.setDouble(7, blockZ - 0.5);
-            dataStmt.setDouble(8, blockZ + 1.5);
-
-            if (actionType != null) {
-                dataStmt.setInt(9, actionType.getId());
-                dataStmt.setInt(10, limit);
-                dataStmt.setInt(11, skip);
-            } else {
-                dataStmt.setInt(9, limit);
-                dataStmt.setInt(10, skip);
-            }
+             PreparedStatement dataStmt = query.prepare(connection)) {
 
             try (ResultSet rs = dataStmt.executeQuery()) {
                 while (rs.next()) {

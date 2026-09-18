@@ -210,6 +210,12 @@ public class SQLConnection implements DatabaseConnection {
             } catch (SQLException ignored) {
             }
             try {
+                stmt.execute("CREATE INDEX IF NOT EXISTS idx_block_location_time ON " + logEntries +
+                    " (world_id, x, y, z, created_at DESC, id DESC)");
+            } catch (SQLException exception) {
+                stellarProtect.getLogger().warning("Failed to create block location index: " + exception.getMessage());
+            }
+            try {
                 stmt.execute("CREATE INDEX IF NOT EXISTS idx_player_time ON " + logEntries + " (player_id, created_at)");
             } catch (SQLException ignored) {
             }
