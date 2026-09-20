@@ -7,22 +7,24 @@ import java.util.*;
 
 public class ItemsCache {
 
-    private static final int CAPACITY = 8192;
-    private static final int MASK = CAPACITY - 1;
+    private static final int INITIAL_CAPACITY = 8192;
     private static final float LOAD_FACTOR = 0.7f;
 
-    private final ItemTemplate[] items = new ItemTemplate[CAPACITY];
+    private final int capacity = INITIAL_CAPACITY;
+    private final int mask = INITIAL_CAPACITY - 1;
+    private final ItemTemplate[] items = new ItemTemplate[INITIAL_CAPACITY];
+    private final Map<Long, ItemTemplate> allItems = new LinkedHashMap<>();
+    private final Set<Long> indexedIds = new HashSet<>();
 
-    private final IndexEntry[] idIndex = new IndexEntry[CAPACITY];
-    private final IndexEntry[] displayNameIndex = new IndexEntry[CAPACITY];
-    private final IndexEntry[] loreIndex = new IndexEntry[CAPACITY];
-    private final IndexEntry[] typeNameIndex = new IndexEntry[CAPACITY];
+    private final IndexEntry[] displayNameIndex = new IndexEntry[INITIAL_CAPACITY];
+    private final IndexEntry[] loreIndex = new IndexEntry[INITIAL_CAPACITY];
+    private final IndexEntry[] typeNameIndex = new IndexEntry[INITIAL_CAPACITY];
 
     private final Map<String, IntSet> displayNameTokens = new HashMap<>();
     private final Map<String, IntSet> loreTokens = new HashMap<>();
     private final Map<String, IntSet> typeNameTokens = new HashMap<>();
 
-    private final int[] validPositions = new int[CAPACITY];
+    private final int[] validPositions = new int[INITIAL_CAPACITY];
     private int validCount = 0;
     private int nextFreeHint = 0;
 
@@ -49,20 +51,10 @@ public class ItemsCache {
         return hash;
     }
 
-    private static long hashLong(long value) {
-        value = (~value) + (value << 18);
-        value = value ^ (value >>> 31);
-        value = value * 21;
-        value = value ^ (value >>> 11);
-        value = value + (value << 6);
-        value = value ^ (value >>> 22);
-        return value;
-    }
-
     private void indexSubstrings(String text, Map<String, IntSet> tokenMap, int position) {
         if (text == null || text.isEmpty()) return;
 
-        String lowerText = text.toLowerCase();
+        String lowerText = text.toLowerCase(Locale.ROOT);
 
         for (int len = 2; len <= Math.min(6, lowerText.length()); len++) {
             for (int i = 0; i <= lowerText.length() - len; i++) {
@@ -81,7 +73,7 @@ public class ItemsCache {
     }
 
     private int findFreePosition() {
-        for (int i = nextFreeHint; i < CAPACITY; i++) {
+        for (int i = nextFreeHint; i < capacity; i++) {
             if (items[i] == null) {
                 nextFreeHint = i + 1;
                 return i;
@@ -100,45 +92,22 @@ public class ItemsCache {
         if (key == null) return;
 
         long hash = hash(key);
-        int slot = (int) (hash & MASK);
+        int slot = (int) (hash & mask);
 
         IndexEntry entry = new IndexEntry(hash, position);
 
         while (index[slot] != null) {
-            if (index[slot].hash == hash) {
-                entry.next = index[slot].next;
-                index[slot] = entry;
-                return;
-            }
-            slot = (slot + 1) & MASK;
+            slot = (slot + 1) & mask;
         }
 
         index[slot] = entry;
-    }
-
-    private void addToIdIndex(long id, int position) {
-        long hash = hashLong(id);
-        int slot = (int) (hash & MASK);
-
-        IndexEntry entry = new IndexEntry(hash, position);
-
-        while (idIndex[slot] != null) {
-            if (idIndex[slot].hash == hash) {
-                entry.next = idIndex[slot].next;
-                idIndex[slot] = entry;
-                return;
-            }
-            slot = (slot + 1) & MASK;
-        }
-
-        idIndex[slot] = entry;
     }
 
     private ItemTemplate searchInStringIndex(IndexEntry[] index, String key) {
         if (key == null) return null;
 
         long hash = hash(key);
-        int slot = (int) (hash & MASK);
+        int slot = (int) (hash & mask);
 
         while (index[slot] != null) {
             IndexEntry entry = index[slot];
@@ -154,31 +123,14 @@ public class ItemsCache {
                 }
             }
 
-            slot = (slot + 1) & MASK;
+            slot = (slot + 1) & mask;
         }
 
         return null;
     }
 
     private ItemTemplate searchById(long id) {
-        long hash = hashLong(id);
-        int slot = (int) (hash & MASK);
-
-        while (idIndex[slot] != null) {
-            IndexEntry entry = idIndex[slot];
-
-            if (entry.hash == hash) {
-                ItemTemplate item = items[entry.position];
-
-                if (item != null && item.id == id) {
-                    return item;
-                }
-            }
-
-            slot = (slot + 1) & MASK;
-        }
-
-        return null;
+        return allItems.get(id);
     }
 
     private List<Long> findContains(String searchText, Map<String, IntSet> tokenMap, FieldType fieldType) {
@@ -186,7 +138,7 @@ public class ItemsCache {
             return new ArrayList<>();
         }
 
-        String lowerSearch = searchText.toLowerCase();
+        String lowerSearch = searchText.toLowerCase(Locale.ROOT);
         List<Long> results = new ArrayList<>();
 
         IntSet candidatePositions = tokenMap.get(lowerSearch);
@@ -198,6 +150,7 @@ public class ItemsCache {
                     results.add(item.id);
                 }
             }
+            appendOverflowMatches(results, lowerSearch, fieldType);
             return results;
         }
 
@@ -228,6 +181,7 @@ public class ItemsCache {
                     }
                 }
             }
+            appendOverflowMatches(results, lowerSearch, fieldType);
             return results;
         }
 
@@ -242,7 +196,29 @@ public class ItemsCache {
             }
         }
 
+        appendOverflowMatches(results, lowerSearch, fieldType);
         return results;
+    }
+
+    private void appendOverflowMatches(List<Long> results, String lowerSearch, FieldType fieldType) {
+        for (ItemTemplate item : allItems.values()) {
+            if (indexedIds.contains(item.id)) continue;
+
+            String fieldValue = getFieldValue(item, fieldType);
+            if (fieldValue != null && fieldValue.contains(lowerSearch)) {
+                results.add(item.id);
+            }
+        }
+    }
+
+    private ItemTemplate findExactOverflow(String expected, FieldType fieldType) {
+        if (expected == null) return null;
+
+        for (ItemTemplate item : allItems.values()) {
+            if (indexedIds.contains(item.id)) continue;
+            if (expected.equals(getFieldValue(item, fieldType))) return item;
+        }
+        return null;
     }
 
     private String getFieldValue(ItemTemplate item, FieldType fieldType) {
@@ -264,18 +240,31 @@ public class ItemsCache {
         }
     }
 
-    public boolean put(ItemTemplate item) {
-        if (size >= CAPACITY * LOAD_FACTOR) {
+    public synchronized boolean put(ItemTemplate item) {
+        if (item == null) {
             return false;
         }
+
+        if (allItems.putIfAbsent(item.id, item) != null) return true;
+
+        // Keep the allocation-heavy substring indexes bounded. Historical templates
+        // beyond the search tier remain available by ID and are scanned only for an
+        // explicit staff lookup.
+        if (size + 1 > capacity * LOAD_FACTOR) return true;
+
+        putWithoutResize(item);
+        return true;
+    }
+
+    private void putWithoutResize(ItemTemplate item) {
 
         int position = findFreePosition();
 
         items[position] = item;
+        indexedIds.add(item.id);
 
         validPositions[validCount++] = position;
 
-        addToIdIndex(item.id, position);
         if (item.getDisplayName() != null) addToStringIndex(displayNameIndex, item.getDisplayName(), position);
         if (item.getLore() != null) addToStringIndex(loreIndex, item.getLore(), position);
         if (item.getTypeName() != null) addToStringIndex(typeNameIndex, item.getTypeName(), position);
@@ -285,44 +274,46 @@ public class ItemsCache {
         if (item.getTypeName() != null) indexSubstrings(item.getTypeName(), typeNameTokens, position);
 
         size++;
-        return true;
     }
 
-    public ItemTemplate getById(long id) {
+    public synchronized ItemTemplate getById(long id) {
         return searchById(id);
     }
 
-    public ItemTemplate getByDisplayNameExact(String displayName) {
-        return searchInStringIndex(displayNameIndex, displayName);
+    public synchronized ItemTemplate getByDisplayNameExact(String displayName) {
+        ItemTemplate indexed = searchInStringIndex(displayNameIndex, displayName);
+        return indexed != null ? indexed : findExactOverflow(displayName, FieldType.DISPLAY_NAME);
     }
 
-    public ItemTemplate getByLoreExact(String lore) {
-        return searchInStringIndex(loreIndex, lore);
+    public synchronized ItemTemplate getByLoreExact(String lore) {
+        ItemTemplate indexed = searchInStringIndex(loreIndex, lore);
+        return indexed != null ? indexed : findExactOverflow(lore, FieldType.LORE);
     }
 
-    public ItemTemplate getByTypeNameExact(String typeName) {
-        return searchInStringIndex(typeNameIndex, typeName);
+    public synchronized ItemTemplate getByTypeNameExact(String typeName) {
+        ItemTemplate indexed = searchInStringIndex(typeNameIndex, typeName);
+        return indexed != null ? indexed : findExactOverflow(typeName, FieldType.TYPE_NAME);
     }
 
-    public List<Long> findIdsByDisplayNameContains(String searchText) {
+    public synchronized List<Long> findIdsByDisplayNameContains(String searchText) {
         return findContains(searchText, displayNameTokens, FieldType.LOWER_DISPLAY_NAME);
     }
 
-    public List<Long> findIdsByLoreContains(String searchText) {
+    public synchronized List<Long> findIdsByLoreContains(String searchText) {
         return findContains(searchText, loreTokens, FieldType.LOWER_LORE);
     }
 
-    public List<Long> findIdsByTypeNameContains(List<String> searchTexts, FieldType fieldType) {
+    public synchronized List<Long> findIdsByTypeNameContains(List<String> searchTexts, FieldType fieldType) {
         if (searchTexts.isEmpty()) return Collections.emptyList();
 
         List<Long> result = new ArrayList<>();
         for (String searchText : searchTexts) {
-            result.addAll(findContains(searchText, typeNameTokens, fieldType));
+            result.addAll(findContains(searchText, tokenMap(fieldType), fieldType));
         }
         return result;
     }
 
-    public List<Long> findIdsContains(Map<String, List<String>> searchTexts) {
+    public synchronized List<Long> findIdsContains(Map<String, List<String>> searchTexts) {
         if (searchTexts.isEmpty()) return Collections.emptyList();
 
         List<Long> result = new ArrayList<>();
@@ -339,12 +330,27 @@ public class ItemsCache {
         return result;
     }
 
-    public ItemTemplate[] items() {
-        return items;
+    private Map<String, IntSet> tokenMap(FieldType fieldType) {
+        switch (fieldType) {
+            case DISPLAY_NAME:
+            case LOWER_DISPLAY_NAME:
+                return displayNameTokens;
+            case LORE:
+            case LOWER_LORE:
+                return loreTokens;
+            case TYPE_NAME:
+            case LOWER_TYPE_NAME:
+            default:
+                return typeNameTokens;
+        }
     }
 
-    public int size() {
-        return size;
+    public synchronized ItemTemplate[] items() {
+        return allItems.values().toArray(new ItemTemplate[0]);
+    }
+
+    public synchronized int size() {
+        return allItems.size();
     }
 
     public enum FieldType {DISPLAY_NAME, LORE, TYPE_NAME, LOWER_DISPLAY_NAME, LOWER_LORE, LOWER_TYPE_NAME}
@@ -427,8 +433,6 @@ public class ItemsCache {
 
         final long hash;
         final int position;
-        IndexEntry next;
-
         IndexEntry(long hash, int position) {
             this.hash = hash;
             this.position = position;

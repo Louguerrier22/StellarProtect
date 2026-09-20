@@ -6,6 +6,7 @@ import io.github.insideranh.stellarprotect.database.entries.LogEntry;
 import io.github.insideranh.stellarprotect.enums.ActionType;
 import io.github.insideranh.stellarprotect.items.ItemReference;
 import io.github.insideranh.stellarprotect.items.ItemTemplate;
+import io.github.insideranh.stellarprotect.items.ItemTemplateResolver;
 import io.github.insideranh.stellarprotect.utils.WorldUtils;
 import lombok.Getter;
 import org.bukkit.Location;
@@ -38,12 +39,12 @@ public class PlayerArmorStandManipulateEntry extends LogEntry {
     @Override
     public String getDataString() {
         ItemTemplate itemTemplate = StellarProtect.getInstance().getItemsManager().getItemTemplate(oldItemId);
-        return itemTemplate.getBukkitItem().getType().name();
+        return ItemTemplateResolver.materialNameOrFallback(itemTemplate, "UNKNOWN");
     }
 
     public String getNewDataString() {
         ItemTemplate itemTemplate = StellarProtect.getInstance().getItemsManager().getItemTemplate(newItemId);
-        return itemTemplate.getBukkitItem().getType().name();
+        return ItemTemplateResolver.materialNameOrFallback(itemTemplate, "UNKNOWN");
     }
 
     @Override

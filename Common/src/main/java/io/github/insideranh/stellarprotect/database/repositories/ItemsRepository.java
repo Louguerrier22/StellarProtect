@@ -10,4 +10,6 @@ public interface ItemsRepository {
 
     void loadMostUsedItems();
 
+    long getNextItemTemplateId();
+
 }

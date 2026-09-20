@@ -40,6 +40,9 @@ public class ProtectDatabase {
         }
         this.temporalConnection = new SQLQueueConnection();
         this.databaseConnection.connect();
+        this.stellarProtect.getItemsManager().getCurrentId().set(
+            this.databaseConnection.getItemsRepository().getNextItemTemplateId()
+        );
         this.temporalConnection.connect();
         this.stellarProtect.getLookupExecutor().execute(() -> this.databaseConnection.createIndexes());
     }

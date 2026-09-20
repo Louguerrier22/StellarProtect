@@ -76,33 +76,52 @@ public class ItemsRepositorySQL implements ItemsRepository {
         );
 
         executor.execute(() -> {
-            String sql = "SELECT id, base64, s, access_count, last_accessed, total_quantity_used, created_at " +
-                "FROM " + stellarProtect.getConfigManager().getTablesItemTemplates() + " " +
-                "ORDER BY access_count DESC, total_quantity_used DESC";
+            String sql = "SELECT id, base64 FROM " +
+                stellarProtect.getConfigManager().getTablesItemTemplates() + " ORDER BY id";
 
             try (PreparedStatement statement = connection.prepareStatement(sql);
                  ResultSet resultSet = statement.executeQuery()) {
 
+                int skipped = 0;
                 while (resultSet.next()) {
-                    long id = resultSet.getLong("id");
-                    String base64 = resultSet.getString("base64");
+                    try {
+                        long id = resultSet.getLong("id");
+                        String base64 = resultSet.getString("base64");
+                        ItemStack bukkitItem = InventorySerializable.itemStackFromBase64(base64);
+                        if (bukkitItem == null) {
+                            skipped++;
+                            continue;
+                        }
 
-                    ItemStack bukkitItem = InventorySerializable.itemStackFromBase64(base64);
-
-                    ItemTemplate template = new ItemTemplate(id, bukkitItem, base64);
-
-                    stellarProtect.getItemsManager().loadItemReference(template, base64);
+                        ItemTemplate template = new ItemTemplate(id, bukkitItem, base64);
+                        stellarProtect.getItemsManager().loadItemReference(template, base64);
+                    } catch (Exception exception) {
+                        skipped++;
+                    }
                 }
                 long count = stellarProtect.getItemsManager().getItemReferenceCount();
-
-                stellarProtect.getItemsManager().getCurrentId().set(count + 1L);
                 Debugger.debugLog("Loaded " + count + " item references.");
+                if (skipped > 0) {
+                    stellarProtect.getLogger().warning("Skipped " + skipped + " unreadable item templates while loading StellarProtect history.");
+                }
             } catch (SQLException e) {
                 stellarProtect.getLogger().info("Error en loadMostUsedItems: " + e.getMessage());
             }
         });
 
         executor.shutdown();
+    }
+
+    @Override
+    public long getNextItemTemplateId() {
+        String sql = "SELECT COALESCE(MAX(id), -1) + 1 FROM " +
+            stellarProtect.getConfigManager().getTablesItemTemplates();
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet resultSet = statement.executeQuery()) {
+            return resultSet.next() ? resultSet.getLong(1) : 0L;
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Could not initialize the next item template id", exception);
+        }
     }
 
 }

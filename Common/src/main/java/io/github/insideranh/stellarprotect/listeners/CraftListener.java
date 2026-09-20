@@ -12,8 +12,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.enchantment.EnchantItemEvent;
 import org.bukkit.event.inventory.CraftItemEvent;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.inventory.AnvilInventory;
 import org.bukkit.inventory.ItemStack;
 
 public class CraftListener implements Listener {
@@ -51,20 +49,6 @@ public class CraftListener implements Listener {
         ItemReference itemReference = plugin.getItemsManager().getItemReference(itemStack);
 
         LoggerCache.addLog(new PlayerItemLogEntry(playerProtect.getPlayerId(), itemReference, player.getLocation(), ActionType.ENCHANT));
-    }
-
-    @EventHandler
-    public void onAnvil(InventoryClickEvent event) {
-        if (event.getClickedInventory() instanceof AnvilInventory) {
-            AnvilInventory anvilInventory = (AnvilInventory) event.getClickedInventory();
-            Player player = (Player) event.getWhoClicked();
-            if (!player.getName().equals("InsiderAnh")) return;
-
-            player.sendMessage("Clicked " + event.getSlot() + " raw slot " + event.getRawSlot());
-            player.sendMessage("Anvil contents 0 " + anvilInventory.getItem(0));
-            player.sendMessage("Anvil contents 1 " + anvilInventory.getItem(1));
-            player.sendMessage("Anvil contents 2 " + anvilInventory.getItem(2));
-        }
     }
 
 }

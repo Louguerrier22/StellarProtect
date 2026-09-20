@@ -14,7 +14,6 @@ import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,7 +24,7 @@ public class ItemsManager {
 
     private final ConcurrentHashMap<String, Long> itemHashToId = new ConcurrentHashMap<>(1000);
     private final ItemsCache itemCache = new ItemsCache();
-    private final HashSet<Long> unsavedTemplates = new HashSet<>();
+    private final Set<Long> unsavedTemplates = ConcurrentHashMap.newKeySet();
     private final StellarProtect plugin = StellarProtect.getInstance();
     private final AtomicLong currentId = new AtomicLong(0);
 
@@ -71,6 +70,7 @@ public class ItemsManager {
     public void loadItemReference(ItemTemplate template, String fullBase64) {
         itemHashToId.put(fullBase64, template.getId());
         itemCache.put(template);
+        currentId.accumulateAndGet(template.getId() + 1L, Math::max);
     }
 
     @NonNull
@@ -88,12 +88,7 @@ public class ItemsManager {
         reduced.setAmount(1);
 
         String base64 = InventorySerializable.itemStackToBase64(reduced).replace("\n", "").replace("\r", "");
-        Long templateId = itemHashToId.get(base64);
-        if (templateId != null) {
-            return new ItemReference(templateId, amount);
-        }
-
-        templateId = createItemTemplate(itemStack, base64);
+        long templateId = createItemTemplate(itemStack, base64);
         return new ItemReference(templateId, amount);
     }
 
@@ -102,22 +97,25 @@ public class ItemsManager {
     }
 
     public long createItemTemplate(ItemStack itemStack, String base64) {
-        long id = currentId.getAndIncrement();
-
-        ItemTemplate template = new ItemTemplate(id, itemStack, base64);
-        unsavedTemplates.add(id);
-        itemCache.put(template);
-        itemHashToId.put(base64, id);
-        return id;
+        return itemHashToId.computeIfAbsent(base64, ignored -> {
+            long id = currentId.getAndIncrement();
+            ItemTemplate template = new ItemTemplate(id, itemStack, base64);
+            unsavedTemplates.add(id);
+            itemCache.put(template);
+            return id;
+        });
     }
 
     public void saveItems() {
         if (unsavedTemplates.isEmpty()) return;
 
         List<ItemTemplate> templates = new ArrayList<>();
-        unsavedTemplates.forEach(id -> templates.add(itemCache.getById(id)));
-        unsavedTemplates.clear();
-        plugin.getProtectDatabase().saveItems(templates);
+        for (Long id : unsavedTemplates) {
+            if (!unsavedTemplates.remove(id)) continue;
+            ItemTemplate template = itemCache.getById(id);
+            if (template != null) templates.add(template);
+        }
+        if (!templates.isEmpty()) plugin.getProtectDatabase().saveItems(templates);
     }
 
     public long getItemReferenceCount() {

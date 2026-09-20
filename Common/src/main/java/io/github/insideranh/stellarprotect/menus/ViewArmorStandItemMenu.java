@@ -63,14 +63,14 @@ public class ViewArmorStandItemMenu extends AInventory {
         ItemTemplate newItemTemplate = plugin.getItemsManager().getItemTemplate(manipulateEntry.getNewItemId());
 
         inventory.setItem(0, oldItem);
-        if (manipulateEntry.getOldItemId() == -1L) {
+        if (manipulateEntry.getOldItemId() == -1L || oldItemTemplate == null || oldItemTemplate.getBukkitItem() == null) {
             inventory.setItem(1, noneItem);
         } else {
             inventory.setItem(1, oldItemTemplate.getBukkitItem());
         }
 
         inventory.setItem(3, newItem);
-        if (manipulateEntry.getNewItemId() == -1L) {
+        if (manipulateEntry.getNewItemId() == -1L || newItemTemplate == null || newItemTemplate.getBukkitItem() == null) {
             inventory.setItem(4, noneItem);
         } else {
             inventory.setItem(4, newItemTemplate.getBukkitItem());

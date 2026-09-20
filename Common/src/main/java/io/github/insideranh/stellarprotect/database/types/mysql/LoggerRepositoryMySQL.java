@@ -299,53 +299,44 @@ public class LoggerRepositoryMySQL implements LoggerRepository {
     @Override
     public CompletableFuture<CallbackLookup<Map<LocationCache, Set<LogEntry>>, Long>> getLogs(@NonNull DatabaseFilters databaseFilters, boolean ignoreCache, int skip, int limit) {
         return CompletableFuture.supplyAsync(() -> {
-            List<LogEntry> cachedLogs = ignoreCache ? Collections.emptyList() : LoggerCache.getLogs(databaseFilters, skip, limit)
+            int candidateLimit = LocationLookupPage.databaseFetchLimit(limit, 0);
+            List<LogEntry> cachedLogs = ignoreCache ? Collections.emptyList() : LoggerCache.getLogs(databaseFilters, skip, candidateLimit)
                 .stream()
-                .sorted(Comparator.comparingLong(LogEntry::getCreatedAt).reversed())
+                .sorted(logOrder())
                 .collect(Collectors.toList());
 
-            Map<LocationCache, Set<LogEntry>> groupedResults = cachedLogs.stream()
+            List<LogEntry> candidates = new ArrayList<>(cachedLogs);
+            int remaining = LocationLookupPage.databaseFetchLimit(limit, cachedLogs.size());
+
+            if (remaining > 0) {
+                int dbSkip = LocationLookupPage.databaseSkip(skip, cachedLogs.size());
+                CallbackLookup<Map<LocationCache, Set<LogEntry>>, Long> dbLookup = queryLogsFromDB(databaseFilters, dbSkip, remaining);
+
+                List<LogEntry> dbLogs = dbLookup.getLogs().values().stream()
+                    .flatMap(Set::stream)
+                    .filter(log -> cachedLogs.stream().noneMatch(log::equals))
+                    .sorted(logOrder())
+                    .limit(remaining)
+                    .collect(Collectors.toList());
+                candidates.addAll(dbLogs);
+            }
+
+            candidates.sort(logOrder());
+            LocationLookupPage<LogEntry> page = LocationLookupPage.fromCandidates(candidates, skip, limit);
+            Map<LocationCache, Set<LogEntry>> groupedResults = page.getRows().stream()
                 .collect(Collectors.groupingBy(
                     LocationCache::of,
                     LinkedHashMap::new,
                     Collectors.toCollection(LinkedHashSet::new)
                 ));
 
-            int remaining = limit - cachedLogs.size();
-
-            if (remaining > 0) {
-                int dbSkip = skip + cachedLogs.size();
-
-                CallbackLookup<Map<LocationCache, Set<LogEntry>>, Long> dbLookup = queryLogsFromDB(databaseFilters, dbSkip, remaining);
-
-                List<LogEntry> dbLogs = dbLookup.getLogs().values().stream()
-                    .flatMap(Set::stream)
-                    .filter(log -> cachedLogs.stream().noneMatch(c -> c.equals(log)))
-                    .sorted(Comparator.comparingLong(LogEntry::getCreatedAt).reversed())
-                    .limit(remaining)
-                    .collect(Collectors.toList());
-
-                Map<LocationCache, Set<LogEntry>> dbGrouped = dbLogs.stream()
-                    .collect(Collectors.groupingBy(
-                        LocationCache::of,
-                        LinkedHashMap::new,
-                        Collectors.toCollection(LinkedHashSet::new)
-                    ));
-
-                dbGrouped.forEach((location, logs) ->
-                    groupedResults.merge(location, logs, (existing, newLogs) -> {
-                        existing.addAll(newLogs);
-                        return existing;
-                    })
-                );
-
-                return new CallbackLookup<>(groupedResults, dbLookup.getTotal());
-            }
-
-            long total = countLogs(databaseFilters);
-
-            return new CallbackLookup<>(groupedResults, total);
+            return new CallbackLookup<>(groupedResults, page.getEstimatedTotal());
         }, stellarProtect.getLookupExecutor());
+    }
+
+    private static Comparator<LogEntry> logOrder() {
+        return Comparator.comparingLong(LogEntry::getCreatedAt).reversed()
+            .thenComparing(Comparator.comparingLong(LogEntry::getId).reversed());
     }
 
     @Override
@@ -413,6 +404,7 @@ public class LoggerRepositoryMySQL implements LoggerRepository {
                             if (addedFromDB >= remaining) break;
 
                             ItemTemplate itemTemplate = stellarProtect.getItemsManager().getItemTemplate(addedEntry.getKey());
+                            if (itemTemplate == null) continue;
                             ItemStack item = itemTemplate.getBukkitItem();
                             if (item == null) continue;
 
@@ -433,6 +425,7 @@ public class LoggerRepositoryMySQL implements LoggerRepository {
                             if (addedFromDB >= remaining) break;
 
                             ItemTemplate itemTemplate = stellarProtect.getItemsManager().getItemTemplate(removedEntry.getKey());
+                            if (itemTemplate == null) continue;
                             ItemStack item = itemTemplate.getBukkitItem();
                             if (item == null) continue;
 
@@ -557,22 +550,16 @@ public class LoggerRepositoryMySQL implements LoggerRepository {
         QueryBuilder queryBuilder = buildBaseQuery(databaseFilters);
 
         String dataQuery = "SELECT ple.*, p.name, p.uuid " + queryBuilder.getDataQuery() +
-            " ORDER BY ple.created_at DESC LIMIT ? OFFSET ?";
-
-        String countQuery = "SELECT COUNT(*) " + queryBuilder.getCountQuery();
-
-        long totalCount = 0;
+            " ORDER BY ple.created_at DESC, ple.id DESC LIMIT ? OFFSET ?";
 
         try (Connection connection = getConnection()) {
-            totalCount = executeCountQuery(connection, countQuery, queryBuilder.getParameters());
-
             logs = executeDataQuery(connection, dataQuery, queryBuilder.getParameters(), limit, skip);
 
         } catch (SQLException e) {
             stellarProtect.getLogger().log(Level.SEVERE, "Error in queryLogsFromDB", e);
         }
 
-        Debugger.debugLog("Loaded " + logs.size() + " logs from database. Total count: " + totalCount);
+        Debugger.debugLog("Loaded " + logs.size() + " logs from database.");
 
         Map<LocationCache, Set<LogEntry>> groupedLogs = logs.stream().collect(
             Collectors.groupingBy(
@@ -582,19 +569,7 @@ public class LoggerRepositoryMySQL implements LoggerRepository {
             )
         );
 
-        return new CallbackLookup<>(groupedLogs, totalCount);
-    }
-
-    public long countLogs(DatabaseFilters databaseFilters) {
-        QueryBuilder queryBuilder = buildBaseQuery(databaseFilters);
-        String countQuery = "SELECT COUNT(*) " + queryBuilder.getCountQuery();
-
-        try (Connection connection = getConnection()) {
-            return executeCountQuery(connection, countQuery, queryBuilder.getParameters());
-        } catch (SQLException e) {
-            stellarProtect.getLogger().log(Level.SEVERE, "Error in countLogs", e);
-            return 0;
-        }
+        return new CallbackLookup<>(groupedLogs, 0L);
     }
 
     private QueryBuilder buildBaseQuery(DatabaseFilters databaseFilters) {
@@ -623,19 +598,6 @@ public class LoggerRepositoryMySQL implements LoggerRepository {
         );
 
         return queryBuilder.addActionTypesFilter(databaseFilters.getActionTypesFilter());
-    }
-
-    private long executeCountQuery(Connection connection, String countQuery, List<Object> parameters) throws SQLException {
-        try (PreparedStatement countStmt = connection.prepareStatement(countQuery)) {
-            setParameters(countStmt, parameters);
-
-            try (ResultSet resultSet = countStmt.executeQuery()) {
-                if (resultSet.next()) {
-                    return resultSet.getLong(1);
-                }
-            }
-        }
-        return 0;
     }
 
     private Set<LogEntry> executeDataQuery(Connection connection, String dataQuery, List<Object> parameters, int limit, int skip) throws SQLException {

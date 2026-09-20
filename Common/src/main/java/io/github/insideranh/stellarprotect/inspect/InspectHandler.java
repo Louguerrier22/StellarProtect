@@ -12,6 +12,7 @@ import io.github.insideranh.stellarprotect.database.entries.players.*;
 import io.github.insideranh.stellarprotect.database.entries.world.CropGrowLogEntry;
 import io.github.insideranh.stellarprotect.enums.ActionType;
 import io.github.insideranh.stellarprotect.items.ItemTemplate;
+import io.github.insideranh.stellarprotect.items.ItemTemplateResolver;
 import io.github.insideranh.stellarprotect.items.MinecraftItem;
 import io.github.insideranh.stellarprotect.utils.*;
 import org.bukkit.Location;
@@ -207,8 +208,8 @@ public class InspectHandler {
             playerProtect.getPosibleLogs().put(armorStandEntry.hashCode(), armorStandEntry);
 
             ItemTemplate itemTemplate = plugin.getItemsManager().getItemTemplate(armorStandEntry.getNewItemId() != -1 ? armorStandEntry.getNewItemId() : armorStandEntry.getOldItemId());
-            ItemStack item = itemTemplate.getBukkitItem();
-            String cleanName = StringCleanerUtils.parseMinecraftData(item.getType().name()).getCleanName();
+            String materialName = ItemTemplateResolver.materialNameOrFallback(itemTemplate, "UNKNOWN");
+            String cleanName = StringCleanerUtils.parseMinecraftData(materialName).getCleanName();
 
             plugin.getProtectNMS().sendActionTitle(player,
                 plugin.getLangManager().get(messageKey),
@@ -361,7 +362,9 @@ public class InspectHandler {
             PlayerPlaceRemoveItemLogEntry itemEntry = (PlayerPlaceRemoveItemLogEntry) logEntry;
             MinecraftItem minecraftItem = StringCleanerUtils.parseMinecraftData(itemEntry.getDataString());
             ItemTemplate itemTemplate = plugin.getItemsManager().getItemTemplate(itemEntry.getItemReferenceId());
-            MinecraftItem explainedItem = StringCleanerUtils.parseMinecraftData(itemTemplate.getBukkitItem().getType().name());
+            MinecraftItem explainedItem = StringCleanerUtils.parseMinecraftData(
+                ItemTemplateResolver.materialNameOrFallback(itemTemplate, itemEntry.getDataString())
+            );
             String actionKey = "messages.actions." + (itemEntry.isPlaced() ? "place_item" : "remove_item");
             String tooltipKey = "messages.tooltips." + (itemEntry.isPlaced() ? "place_item" : "remove_item");
 
